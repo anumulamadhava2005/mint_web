@@ -219,21 +219,9 @@ export default function Page() {
   }
 
   return (
-    <div style={{ 
-      display: 'flex', 
-      flexDirection: 'column', 
-      height: '100vh', 
-      width: '100vw',
-      backgroundColor: '#1E1E1E',
-      color: '#FFFFFF',
-      overflow: 'hidden'
-    }}>
-      {/* Toolbar - Top bar */}
-      <div style={{ 
-        backgroundColor: '#2C2C2C', 
-        borderBottom: '1px solid #3E3E3E',
-        flexShrink: 0
-      }}>
+    <div className="flex flex-col h-screen w-screen bg-gray-950 text-white overflow-hidden">
+      {/* Toolbar - Top bar with dark theme */}
+      <div className="bg-gray-900 border-b border-gray-800 flex-shrink-0">
         <Toolbar
           user={user}
           onConnect={() => (window.location.href = "/api/auth/login")}
@@ -252,64 +240,25 @@ export default function Page() {
 
       {/* Error Banner */}
       {error && (
-        <div style={{
-          backgroundColor: 'rgba(239, 68, 68, 0.1)',
-          borderBottom: '1px solid rgba(239, 68, 68, 0.3)',
-          color: '#FCA5A5',
-          padding: '8px 16px',
-          fontSize: '14px'
-        }}>
+        <div className="bg-red-900/20 border-b border-red-800/30 text-red-300 px-4 py-2 text-sm">
           {error}
         </div>
       )}
 
-      {/* File Name Banner */}
-      {fileName && (
-        <div style={{
-          backgroundColor: '#2C2C2C',
-          borderBottom: '1px solid #3E3E3E',
-          padding: '8px 16px',
-          fontSize: '13px',
-          color: '#B3B3B3'
-        }}>
-          <span style={{ color: '#7C7C7C' }}>File:</span> {fileName}
-        </div>
-      )}
-
       {/* Main Content Area - 3 column layout */}
-      <div style={{ 
-        display: 'flex', 
-        flex: 1,
-        minHeight: 0,
-        overflow: 'hidden'
-      }}>
+      <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Left Sidebar - Layers Panel */}
-        <div style={{
-          width: '240px',
-          backgroundColor: '#1E1E1E',
-          borderRight: '1px solid #2C2C2C',
-          flexShrink: 0,
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column'
-        }}>
-          <Sidebar
-            rawRoots={rawRoots}
-            setRawRoots={setRawRoots}
-            selectedIds={selectedIds}
-            setSelectedIds={setSelectedIds}
-            selectedFrameId={selectedFrameId}
-            setSelectedFrameId={setSelectedFrameId}
-          />
-        </div>
+        <Sidebar
+          rawRoots={rawRoots}
+          setRawRoots={setRawRoots}
+          selectedIds={selectedIds}
+          setSelectedIds={setSelectedIds}
+          selectedFrameId={selectedFrameId}
+          setSelectedFrameId={setSelectedFrameId}
+        />
 
         {/* Center Canvas */}
-        <div style={{
-          flex: 1,
-          backgroundColor: '#282828',
-          overflow: 'hidden',
-          position: 'relative'
-        }}>
+        <div className="flex-1 bg-gray-900 overflow-hidden relative">
           <CanvasStage
             rawRoots={rawRoots}
             setRawRoots={setRawRoots}
@@ -326,21 +275,14 @@ export default function Page() {
         </div>
 
         {/* Right Sidebar - Properties Panel */}
-        <div style={{
-          width: '280px',
-          backgroundColor: '#1E1E1E',
-          borderLeft: '1px solid #2C2C2C',
-          flexShrink: 0,
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column'
-        }}>
+        {selectedNode && (
           <PropertiesPanel
             selectedNode={selectedNode}
             onUpdateSelected={updateSelected}
+            //images={images}
             onImageChange={(id, url) => handleImageChange(id, url)}
           />
-        </div>
+        )}
       </div>
 
       {/* Convert Modal */}

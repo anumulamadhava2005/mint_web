@@ -1,10 +1,8 @@
-
 import { NodeInput } from "../lib/figma-types";
 import LayersPanel from "./LayersPanel";
 import SectionDropdown from "./SectionDropdown";
 import { useState } from "react";
 import React from "react";
-
 
 export default function Sidebar(props: {
   rawRoots: NodeInput[] | null;
@@ -22,12 +20,38 @@ export default function Sidebar(props: {
   );
 
   return (
-    <aside className="w-64 border-r border-gray-700 bg-gray-950 text-gray-200 flex flex-col min-h-0">
-      {/* Pages Section */}
-      <div className="p-3 border-b border-gray-700 flex items-center justify-between">
-        <span className="text-sm font-semibold text-gray-400">Pages</span>
+    <aside style={{
+      width: '240px',
+      borderRight: '1px solid #2C2C2C',
+      backgroundColor: '#0D1117',
+      color: '#E6EDF3',
+      display: 'flex',
+      flexDirection: 'column',
+      minHeight: 0,
+      overflow: 'hidden'
+    }}>
+      {/* Pages Section Header */}
+      <div style={{
+        padding: '8px 12px',
+        borderBottom: '1px solid #2C2C2C',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between'
+      }}>
+        <span style={{
+          fontSize: '11px',
+          fontWeight: 600,
+          color: '#8B949E',
+          textTransform: 'uppercase',
+          letterSpacing: '0.5px'
+        }}>Pages</span>
       </div>
-      <div className="p-3 border-b border-gray-700">
+      
+      {/* Pages Dropdown */}
+      <div style={{
+        padding: '8px 12px',
+        borderBottom: '1px solid #2C2C2C'
+      }}>
         <SectionDropdown
           rawRoots={rawRoots}
           selectedId={selectedFrameId}
@@ -36,26 +60,66 @@ export default function Sidebar(props: {
       </div>
 
       {/* Search Section */}
-      <div className="p-3 border-b border-gray-700">
-        <div className="relative">
+      <div style={{
+        padding: '8px 12px',
+        borderBottom: '1px solid #2C2C2C'
+      }}>
+        <div style={{ position: 'relative' }}>
           <input
             type="text"
             placeholder="Search layers..."
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            className="w-full text-sm rounded-lg px-2 py-1 bg-gray-800 text-gray-50 placeholder-gray-400 border border-transparent focus:outline-none focus:ring-2 focus:ring-cyan-500"
+            style={{
+              width: '100%',
+              fontSize: '12px',
+              borderRadius: '6px',
+              padding: '6px 8px',
+              backgroundColor: '#161B22',
+              color: '#E6EDF3',
+              border: '1px solid #30363D',
+              outline: 'none'
+            }}
+            onFocus={(e) => e.target.style.border = '1px solid #388BFD'}
+            onBlur={(e) => e.target.style.border = '1px solid #30363D'}
           />
-          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">🔍</span>
+          <span style={{
+            position: 'absolute',
+            right: '8px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            color: '#8B949E',
+            fontSize: '11px',
+            pointerEvents: 'none'
+          }}>
+            🔍
+          </span>
         </div>
       </div>
 
       {/* Layers Heading */}
-      <div className="p-3 flex items-center justify-between border-b border-gray-700">
-        <span className="text-sm font-semibold text-gray-400">Layers</span>
+      <div style={{
+        padding: '8px 12px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        borderBottom: '1px solid #2C2C2C'
+      }}>
+        <span style={{
+          fontSize: '11px',
+          fontWeight: 600,
+          color: '#8B949E',
+          textTransform: 'uppercase',
+          letterSpacing: '0.5px'
+        }}>Layers</span>
       </div>
 
-      {/* Layers Panel */}
-      <div className="flex-1 overflow-y-auto">
+      {/* Layers Panel - Scrollable */}
+      <div style={{
+        flex: 1,
+        overflowY: 'auto',
+        overflowX: 'hidden'
+      }}>
         <LayersPanel
           layers={filteredNodes}
           setLayers={(layers) => setRawRoots(layers)}

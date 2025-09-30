@@ -49,8 +49,7 @@ export default function PropertiesPanel(props: {
       const url = String(reader.result || "");
       if (url) setImageUrl(url);
     };
-    reader.readAsDataURL(file); // preview inline as base64 [5]
-    // If uploading to a server/CDN is needed, do it here and set the returned URL instead. [6]
+    reader.readAsDataURL(file);
   }
 
   const hasImageFill = selectedNode.fill?.type === "IMAGE" || Boolean(currentImage);
@@ -103,18 +102,18 @@ export default function PropertiesPanel(props: {
         <div className="flex gap-2">
           <input
             type="url"
-            placeholder="https://example.com/image.png or data:image/png;base64,..."
-            className={`border rounded px-2 py-1 text-sm w-full ${isValid ? "" : "border-red-500"}`}
+            placeholder="https://example.com/image.png"
+            className={`bg-gray-800 border rounded px-2 py-1 text-xs w-full text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 ${
+              isValid ? "border-gray-700" : "border-red-500"
+            }`}
             value={url}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
-            // Optional pattern to guide users; browser validation is supplemental
-            pattern="https?://.+"
             title="Enter a valid http(s) URL or a data:image URL"
           />
           <button
             type="button"
-            className="border rounded px-2 py-1 text-sm"
+            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded px-2 py-1 text-xs font-medium"
             disabled={!isValid}
             onClick={handleApply}
             title={isValid ? "Set image" : "URL invalid"}
@@ -123,7 +122,7 @@ export default function PropertiesPanel(props: {
           </button>
           <button
             type="button"
-            className="border rounded px-2 py-1 text-sm"
+            className="bg-gray-700 hover:bg-gray-600 text-gray-200 rounded px-2 py-1 text-xs"
             onClick={() => {
               setUrl("");
               setIsValid(true);
@@ -137,7 +136,7 @@ export default function PropertiesPanel(props: {
 
         {/* Inline URL preview box */}
         {url ? (
-          <div className="w-full h-24 border rounded overflow-hidden bg-gray-50 flex items-center justify-center">
+          <div className="w-full h-20 border border-gray-700 rounded overflow-hidden bg-gray-800 flex items-center justify-center">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={url}
@@ -152,19 +151,21 @@ export default function PropertiesPanel(props: {
     );
   }
 
-
   return (
-    <aside className="w-80 border-l bg-white p-3 overflow-y-auto text-black">
-      <div className="text-sm font-semibold mb-2">Properties</div>
-      <div className="text-xs text-gray-500 mb-3">{selectedNode.name || selectedNode.id}</div>
+    <aside className="w-72 border-l border-gray-800 bg-gray-950 p-4 overflow-y-auto text-gray-200">
+      {/* Header */}
+      <div className="mb-4 pb-3 border-b border-gray-800">
+        <div className="text-sm font-semibold text-white mb-1">Properties</div>
+        <div className="text-xs text-gray-500">{selectedNode.name || selectedNode.id}</div>
+      </div>
 
       {/* Size */}
       <div className="space-y-2 mb-4">
-        <div className="text-xs text-gray-600">Size</div>
+        <div className="text-xs font-medium text-gray-400 mb-1">Size</div>
         <div className="grid grid-cols-2 gap-2">
           <input
             type="number"
-            className="border rounded px-2 py-1 text-sm"
+            className="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
             value={selectedNode.width ?? selectedNode.absoluteBoundingBox?.width ?? 0}
             onChange={(e) => {
               const w = Number(e.target.value) || 0;
@@ -176,7 +177,7 @@ export default function PropertiesPanel(props: {
           />
           <input
             type="number"
-            className="border rounded px-2 py-1 text-sm"
+            className="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
             value={selectedNode.height ?? selectedNode.absoluteBoundingBox?.height ?? 0}
             onChange={(e) => {
               const h = Number(e.target.value) || 0;
@@ -190,15 +191,16 @@ export default function PropertiesPanel(props: {
       </div>
 
       {/* Image */}
-      {/* Image */}
       <div className="space-y-2 mb-4">
-        <div className="text-xs text-gray-600">Image</div>
+        <div className="text-xs font-medium text-gray-400 mb-1">Image</div>
 
-        {/* URL input with preview (accepts http(s) or data:image/...;base64) */}
+        {/* URL input with preview */}
         <ImageUrlField
           initialUrl={currentImage || ""}
-          onPreview={(u) => setLocalImg(u || null)} // live preview only
-          onApply={(u) => { if (u && u.trim()) setImageUrl(u.trim()); }}
+          onPreview={(u) => setLocalImg(u || null)}
+          onApply={(u) => {
+            if (u && u.trim()) setImageUrl(u.trim());
+          }}
           onClear={() => clearImage()}
         />
 
@@ -206,12 +208,12 @@ export default function PropertiesPanel(props: {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            className="border rounded px-2 py-1 text-sm"
+            className="bg-gray-700 hover:bg-gray-600 text-gray-200 rounded px-3 py-1.5 text-xs font-medium"
             onClick={() => fileRef.current?.click()}
           >
-            Upload…
+            Upload File
           </button>
-          <span className="text-xs text-gray-500">PNG/JPG recommended</span>
+          <span className="text-xs text-gray-500">PNG/JPG</span>
         </div>
         <input
           ref={fileRef}
@@ -221,22 +223,21 @@ export default function PropertiesPanel(props: {
           onChange={handleFile}
         />
 
-        {/* Final preview of current image */}
-        {currentImage ? (
-          <div className="w-full h-28 border rounded overflow-hidden bg-gray-50 flex items-center justify-center mt-2">
+        {/* Final preview */}
+        {currentImage && (
+          <div className="w-full h-24 border border-gray-700 rounded overflow-hidden bg-gray-800 flex items-center justify-center mt-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={currentImage} alt="Preview" className="max-w-full max-h-full object-contain" />
           </div>
-        ) : null}
+        )}
       </div>
 
-
-      {/* Fill (disabled when image is present) */}
-      <div className="space-y-2 mb-4 opacity-100">
-        <div className="text-xs text-gray-600">Fill</div>
+      {/* Fill */}
+      <div className="space-y-2 mb-4">
+        <div className="text-xs font-medium text-gray-400 mb-1">Fill</div>
         <input
           type="color"
-          className="w-full h-8 border rounded"
+          className="w-full h-8 bg-gray-800 border border-gray-700 rounded cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           value={fillColor || "#ffffff"}
           disabled={hasImageFill}
           onChange={(e) =>
@@ -250,11 +251,11 @@ export default function PropertiesPanel(props: {
 
       {/* Stroke */}
       <div className="space-y-2 mb-4">
-        <div className="text-xs text-gray-600">Stroke</div>
+        <div className="text-xs font-medium text-gray-400 mb-1">Stroke</div>
         <div className="grid grid-cols-3 gap-2">
           <input
             type="color"
-            className="border rounded"
+            className="bg-gray-800 border border-gray-700 rounded cursor-pointer"
             value={selectedNode.stroke?.color || "#000000"}
             onChange={(e) =>
               onUpdateSelected((n) => {
@@ -265,7 +266,7 @@ export default function PropertiesPanel(props: {
           <input
             type="number"
             min={0}
-            className="border rounded px-2 py-1 text-sm"
+            className="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
             value={selectedNode.stroke?.weight ?? 1}
             onChange={(e) =>
               onUpdateSelected((n) => {
@@ -274,7 +275,7 @@ export default function PropertiesPanel(props: {
             }
           />
           <select
-            className="border rounded px-2 py-1 text-sm"
+            className="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
             value={selectedNode.stroke?.align || "CENTER"}
             onChange={(e) =>
               onUpdateSelected((n) => {
@@ -291,11 +292,11 @@ export default function PropertiesPanel(props: {
 
       {/* Corners */}
       <div className="space-y-2 mb-4">
-        <div className="text-xs text-gray-600">Corner radius</div>
+        <div className="text-xs font-medium text-gray-400 mb-1">Corner radius</div>
         <input
           type="number"
           min={0}
-          className="border rounded px-2 py-1 text-sm w-full"
+          className="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-200 w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
           value={selectedNode.corners?.uniform ?? 0}
           onChange={(e) =>
             onUpdateSelected((n) => {
@@ -309,9 +310,9 @@ export default function PropertiesPanel(props: {
       {/* Text */}
       {selectedNode.text && (
         <div className="space-y-2 mb-4">
-          <div className="text-xs text-gray-600">Text</div>
+          <div className="text-xs font-medium text-gray-400 mb-1">Text</div>
           <textarea
-            className="border rounded px-2 py-1 text-sm w-full"
+            className="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-200 w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
             rows={3}
             value={selectedNode.text.characters || ""}
             onChange={(e) =>
@@ -324,7 +325,7 @@ export default function PropertiesPanel(props: {
             <input
               type="number"
               min={1}
-              className="border rounded px-2 py-1 text-sm"
+              className="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
               value={selectedNode.text.fontSize ?? 12}
               onChange={(e) =>
                 onUpdateSelected((n) => {
@@ -334,7 +335,7 @@ export default function PropertiesPanel(props: {
             />
             <input
               type="text"
-              className="border rounded px-2 py-1 text-sm"
+              className="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
               placeholder="Font family"
               value={selectedNode.text.fontFamily || "system-ui"}
               onChange={(e) =>
@@ -347,7 +348,7 @@ export default function PropertiesPanel(props: {
           <div className="grid grid-cols-2 gap-2">
             <input
               type="color"
-              className="border rounded"
+              className="bg-gray-800 border border-gray-700 rounded cursor-pointer"
               value={selectedNode.text.color || "#333333"}
               onChange={(e) =>
                 onUpdateSelected((n) => {
@@ -359,7 +360,7 @@ export default function PropertiesPanel(props: {
               type="number"
               min={0}
               step={0.1}
-              className="border rounded px-2 py-1 text-sm"
+              className="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
               placeholder="Line height"
               value={selectedNode.text.lineHeight ?? ""}
               onChange={(e) =>
@@ -375,10 +376,10 @@ export default function PropertiesPanel(props: {
 
       {/* Shadow */}
       <div className="space-y-2 mb-2">
-        <div className="text-xs text-gray-600">Shadow</div>
+        <div className="text-xs font-medium text-gray-400 mb-1">Shadow</div>
         <input
           type="text"
-          className="border rounded px-2 py-1 text-xs w-full"
+          className="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-200 w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
           placeholder="e.g. 0px 4px 10px rgba(0,0,0,0.15)"
           value={selectedNode.effects?.find((e) => e?.boxShadow)?.boxShadow || ""}
           onChange={(e) =>
