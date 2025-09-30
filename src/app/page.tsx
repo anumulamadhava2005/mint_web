@@ -1,30 +1,27 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useEffect } from "react";
 import Toolbar from "../../components/ToolBar";
 import CanvasStage from "../../components/CanvasStage";
 import PropertiesPanel from "../../components/PropertiesPanel";
 import ConvertModal from "../../components/ConvertModal";
-// import { findNodeById, updateNodeById } from "../../lib/tree"; // replace updateNodeById with safe local version
 import { findNodeById } from "../../lib/tree";
 import { useDrawable } from "../../hooks/useDrawable";
 import { NodeInput, ReferenceFrame } from "../../lib/figma-types";
 import Sidebar from "../../components/Sidebar";
+import Home from "./home";
 
 /** Immutable, safe updater that preserves children and only changes the target node */
 function updateNodeByIdSafe(roots: NodeInput[], id: string, mut: (n: NodeInput) => void): NodeInput[] {
   const rec = (node: NodeInput): NodeInput => {
     if (node.id === id) {
-      // clone target shallowly and preserve children reference by default
       const cloned: NodeInput = { ...node, children: node.children ? [...node.children] : node.children };
       mut(cloned);
-      // ensure children aren't accidentally dropped
       if (node.children && !cloned.children) cloned.children = [...node.children];
       return cloned;
     }
     if (node.children && node.children.length) {
-      // descend and rebuild array only if a child changed
       let changed = false;
       const nextChildren = node.children.map((c) => {
         const nc = rec(c);
@@ -39,6 +36,7 @@ function updateNodeByIdSafe(roots: NodeInput[], id: string, mut: (n: NodeInput) 
 }
 
 export default function Page() {
+  const [showConverter, setShowConverter] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [rawRoots, setRawRoots] = useState<NodeInput[] | null>(null);
@@ -47,6 +45,7 @@ export default function Page() {
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectedFrameId, setSelectedFrameId] = useState<string>("");
+  const [images, setImages] = useState<Record<string, string | HTMLImageElement>>({});
 
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -91,9 +90,31 @@ export default function Page() {
     try {
       const res = await fetch("/api/figma/me");
       const data = await res.json();
-      if (!data.error) setUser(data);
+      if (!data.error) {
+        setUser(data);
+        return data;
+      }
     } catch { }
+    return null;
   }
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const justLoggedIn = params.get('logged_in');
+    
+    fetchUser().then((userData) => {
+      if (justLoggedIn && userData) {
+        setShowConverter(true);
+        window.history.replaceState({}, '', '/');
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (user && !rawRoots && !showConverter) {
+      setShowConverter(true);
+    }
+  }, [user, rawRoots, showConverter]);
 
   async function onFetch(fileUrlOrKey: string) {
     setError(null);
@@ -184,8 +205,6 @@ export default function Page() {
     }
   }
 
-  const [images, setImages] = useState<Record<string, string | HTMLImageElement>>({});
-
   function handleImageChange(key: string, url: string) {
     setImages((prev) => {
       const next = { ...prev };
@@ -195,54 +214,141 @@ export default function Page() {
     });
   }
 
-  return (
-    <main className="min-h-screen w-screen h-screen flex flex-col">
-      <Toolbar
-        user={user}
-        onConnect={() => (window.location.href = "/api/auth/login")}
-        onMountFetchUser={fetchUser}
-        fileName={fileName}
-        loading={loading}
-        onFetch={onFetch}
-        frameOptions={frameOptions}
-        selectedFrameId={selectedFrameId}
-        setSelectedFrameId={setSelectedFrameId}
-        fitToScreen={fitToScreen}
-        openConvert={() => setConvertOpen(true)}
-        zoomPct={scale * 100}
-      />
-      {error && <div className="text-red-700 bg-red-50 border border-red-200 px-3 py-2">{error}</div>}
-      {fileName && <div className="px-3 py-2 text-sm border-b">File: {fileName}</div>}
+  if (!showConverter && !rawRoots && !user) {
+    return <Home onGetStarted={() => setShowConverter(true)} />;
+  }
 
-      <div className="flex flex-1 min-h-0">
-        <Sidebar
-          rawRoots={rawRoots}
-          selectedIds={selectedIds}
-          setSelectedIds={setSelectedIds}
+  return (
+    <div style={{ 
+      display: 'flex', 
+      flexDirection: 'column', 
+      height: '100vh', 
+      width: '100vw',
+      backgroundColor: '#1E1E1E',
+      color: '#FFFFFF',
+      overflow: 'hidden'
+    }}>
+      {/* Toolbar - Top bar */}
+      <div style={{ 
+        backgroundColor: '#2C2C2C', 
+        borderBottom: '1px solid #3E3E3E',
+        flexShrink: 0
+      }}>
+        <Toolbar
+          user={user}
+          onConnect={() => (window.location.href = "/api/auth/login")}
+          onMountFetchUser={fetchUser}
+          fileName={fileName}
+          loading={loading}
+          onFetch={onFetch}
+          frameOptions={frameOptions}
           selectedFrameId={selectedFrameId}
           setSelectedFrameId={setSelectedFrameId}
-        />
-        <CanvasStage
-          rawRoots={rawRoots}
-          setRawRoots={setRawRoots}
-          drawableNodes={drawableNodes}
-          selectedIds={selectedIds}
-          setSelectedIds={setSelectedIds}
-          scale={scale}
-          setScale={setScale}
-          offset={offset}
-          setOffset={setOffset}
-          selectedFrame={selectedFrame}
-          images={images}
-        />
-        <PropertiesPanel
-          selectedNode={selectedNode}
-          onUpdateSelected={updateSelected}
-          onImageChange={(id, url) => handleImageChange(id, url)}
+          fitToScreen={fitToScreen}
+          openConvert={() => setConvertOpen(true)}
+          zoomPct={scale * 100}
         />
       </div>
 
-      <ConvertModal open={convertOpen} onClose={() => setConvertOpen(false)} onConfirm={(val) => convertFile(val)} />
-    </main>
+      {/* Error Banner */}
+      {error && (
+        <div style={{
+          backgroundColor: 'rgba(239, 68, 68, 0.1)',
+          borderBottom: '1px solid rgba(239, 68, 68, 0.3)',
+          color: '#FCA5A5',
+          padding: '8px 16px',
+          fontSize: '14px'
+        }}>
+          {error}
+        </div>
+      )}
+
+      {/* File Name Banner */}
+      {fileName && (
+        <div style={{
+          backgroundColor: '#2C2C2C',
+          borderBottom: '1px solid #3E3E3E',
+          padding: '8px 16px',
+          fontSize: '13px',
+          color: '#B3B3B3'
+        }}>
+          <span style={{ color: '#7C7C7C' }}>File:</span> {fileName}
+        </div>
+      )}
+
+      {/* Main Content Area - 3 column layout */}
+      <div style={{ 
+        display: 'flex', 
+        flex: 1,
+        minHeight: 0,
+        overflow: 'hidden'
+      }}>
+        {/* Left Sidebar - Layers Panel */}
+        <div style={{
+          width: '240px',
+          backgroundColor: '#1E1E1E',
+          borderRight: '1px solid #2C2C2C',
+          flexShrink: 0,
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column'
+        }}>
+          <Sidebar
+            rawRoots={rawRoots}
+            setRawRoots={setRawRoots}
+            selectedIds={selectedIds}
+            setSelectedIds={setSelectedIds}
+            selectedFrameId={selectedFrameId}
+            setSelectedFrameId={setSelectedFrameId}
+          />
+        </div>
+
+        {/* Center Canvas */}
+        <div style={{
+          flex: 1,
+          backgroundColor: '#282828',
+          overflow: 'hidden',
+          position: 'relative'
+        }}>
+          <CanvasStage
+            rawRoots={rawRoots}
+            setRawRoots={setRawRoots}
+            drawableNodes={drawableNodes}
+            selectedIds={selectedIds}
+            setSelectedIds={setSelectedIds}
+            scale={scale}
+            setScale={setScale}
+            offset={offset}
+            setOffset={setOffset}
+            selectedFrame={selectedFrame}
+            images={images}
+          />
+        </div>
+
+        {/* Right Sidebar - Properties Panel */}
+        <div style={{
+          width: '280px',
+          backgroundColor: '#1E1E1E',
+          borderLeft: '1px solid #2C2C2C',
+          flexShrink: 0,
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column'
+        }}>
+          <PropertiesPanel
+            selectedNode={selectedNode}
+            onUpdateSelected={updateSelected}
+            onImageChange={(id, url) => handleImageChange(id, url)}
+          />
+        </div>
+      </div>
+
+      {/* Convert Modal */}
+      <ConvertModal 
+        open={convertOpen} 
+        onClose={() => setConvertOpen(false)} 
+        onConfirm={(val) => convertFile(val)} 
+      />
+    </div>
   );
 }

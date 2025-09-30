@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-"use client";
 
 import { NodeInput } from "../lib/figma-types";
 import LayersPanel from "./LayersPanel";
@@ -7,19 +5,21 @@ import SectionDropdown from "./SectionDropdown";
 import { useState } from "react";
 import React from "react";
 
+
 export default function Sidebar(props: {
   rawRoots: NodeInput[] | null;
+  setRawRoots: React.Dispatch<React.SetStateAction<NodeInput[] | null>>;
   selectedIds: Set<string>;
   setSelectedIds: React.Dispatch<React.SetStateAction<Set<string>>>;
   selectedFrameId: string;
   setSelectedFrameId: React.Dispatch<React.SetStateAction<string>>;
 }) {
-  const { rawRoots, selectedIds, setSelectedIds, selectedFrameId, setSelectedFrameId } = props;
+  const { rawRoots, setRawRoots, selectedIds, setSelectedIds, selectedFrameId, setSelectedFrameId } = props;
   const [filter, setFilter] = useState("");
 
-  const filteredNodes = rawRoots?.filter(node =>
+  const filteredNodes = (rawRoots ?? []).filter(node =>
     node.name?.toLowerCase().includes(filter.toLowerCase())
-  ) || null;
+  );
 
   return (
     <aside className="w-64 border-r border-gray-700 bg-gray-950 text-gray-200 flex flex-col min-h-0">
@@ -56,7 +56,12 @@ export default function Sidebar(props: {
 
       {/* Layers Panel */}
       <div className="flex-1 overflow-y-auto">
-        <LayersPanel rawRoots={filteredNodes} selectedIds={selectedIds} setSelectedIds={setSelectedIds} />
+        <LayersPanel
+          layers={filteredNodes}
+          setLayers={(layers) => setRawRoots(layers)}
+          selectedIds={selectedIds}
+          setSelectedIds={setSelectedIds}
+        />
       </div>
     </aside>
   );
