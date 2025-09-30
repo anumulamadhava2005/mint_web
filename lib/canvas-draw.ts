@@ -214,35 +214,41 @@ export function drawNodes(
 
     // Fallback text preview (no styled characters)
     if (n.textContent && !rawNode?.text?.characters) {
+      const basePx = 20; // 100% zoom size
+      const scaledPx = basePx * scale; // 200% -> 40px, 50% -> 10px
       ctx.fillStyle = "#333";
-      ctx.font = "11px system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+      ctx.font = `${scaledPx}px system - ui, -apple - system, Segoe UI, Roboto, sans - serif`;
       const content = n.textContent.replace(/\s+/g, " ").trim();
-      // wrap even for fallback
       const startX = x + 6;
       const startY = y + 22;
       const maxW = Math.max(0, w - 12);
-      const lineH = Math.ceil(11 * 1.3);
+      const lineH = Math.ceil(scaledPx * 1.3);
       wrapAndDrawText(ctx, content, startX, startY, maxW, lineH);
     }
 
+
+
     // Styled text (TEXT nodes)
+    // Styled text (TEXT nodes) with zoom-proportional size
     if (rawNode?.text) {
       const t: any = rawNode.text;
-      const worldSize = t.fontSize || 12;
       const fam = t.fontFamily || "system-ui";
-      const px = Math.max(11, worldSize / Math.max(0.05, scale)); // fixed in screen space
+      const basePx = t.fontSize || 20; // size at 100% zoom
+      const scaledPx = basePx * scale; // proportional with zoom
       ctx.fillStyle = t.color || "#333";
-      ctx.font = `${px}px ${fam}`;
+      ctx.font = `${ scaledPx }px ${ fam }`;
       const chars = (t.characters || "").replace(/\s+/g, " ").trim();
       if (chars) {
         const paddingX = 6;
         const startX = x + paddingX;
         const startY = y + 22;
         const maxW = Math.max(0, w - paddingX * 2);
-        const lineH = Math.ceil(px * 1.3);
+        const lineH = Math.ceil(scaledPx * 1.3);
         wrapAndDrawText(ctx, chars, startX, startY, maxW, lineH);
       }
     }
+
+
   });
 }
 

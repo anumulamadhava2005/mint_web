@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
 
 async function refreshAccessToken(refreshToken: string) {
@@ -112,24 +113,24 @@ export async function GET(req: NextRequest) {
     // Extract properties: support both payload shapes
     // files/:key returns { document, components, componentSets, styles, ... }
     // files/:key/nodes returns { nodes: { [id]: { document, components, ... } } }
-    let styled: unknown[] = [];
+    let extractedTree: unknown[] = [];
     if (data?.document) {
-      styled = mapStylesFromTree(data.document as FigmaNode);
+      extractedTree = buildHierarchy(data.document as FigmaNode);
     } else if (data?.nodes) {
       // Merge all returned node subtrees
-      const merged: unknown[] = [];
-      Object.values(data.nodes).forEach((entry: unknown) => {
-        if (entry && typeof entry === 'object' && 'document' in entry && entry.document) {
-          merged.push(entry.document);
+      const mergedRoots: FigmaNode[] = [];
+      Object.values(data.nodes).forEach((entry: any) => {
+        if (entry && entry.document) {
+          mergedRoots.push(entry.document);
         }
       });
-      styled = merged.flatMap((root) => mapStylesFromTree(root as FigmaNode));
+      extractedTree = mergedRoots.flatMap(buildHierarchy);
     }
 
     // Return both raw JSON and extracted properties
     return NextResponse.json({
       raw: data,
-      extracted: styled,
+      extracted: extractedTree,
     });
 
   } catch (err) {
@@ -226,7 +227,6 @@ function extractStroke(node: FigmaNode) {
 }
 
 function extractCorners(node: FigmaNode) {
-  // frames/rectangles can expose per-corner radius properties in REST payload (topLeftRadius, etc.) or rectangleCornerRadii array
   const tl = node?.topLeftRadius ?? node?.rectangleCornerRadii?.[0] ?? null;
   const tr = node?.topRightRadius ?? node?.rectangleCornerRadii?.[1] ?? null;
   const br = node?.bottomRightRadius ?? node?.rectangleCornerRadii?.[2] ?? null;
@@ -238,7 +238,6 @@ function extractCorners(node: FigmaNode) {
 function extractEffects(node: FigmaNode) {
   const eff: Effect[] = node?.effects || [];
   if (!eff.length) return [];
-  // Map DROP_SHADOW / INNER_SHADOW to CSS-like boxShadow entries
   return eff
     .filter((e) => e?.visible !== false)
     .map((e) => {
@@ -255,8 +254,6 @@ function extractEffects(node: FigmaNode) {
 
 function extractTextStyles(node: FigmaNode) {
   if (node?.type !== "TEXT") return null;
-  // REST exposes text properties at node level; segment-level requires Plugin API.
-  // Newer REST (Design) also surfaces text properties directly on the node (fontSize, fontName, lineHeight, letterSpacing, textDecoration, textCase)
   const fontSize = node?.fontSize ?? (node?.style && typeof node.style === 'object' && 'fontSize' in node.style ? node.style.fontSize as number : null) ?? null;
   const fontName = node?.fontName ?? (node?.style && typeof node.style === 'object' && 'fontFamily' in node.style ? node.style.fontFamily as string : null) ?? null;
   const fontFamily = fontName && typeof fontName === "object" ? fontName.family : (node?.style && typeof node.style === 'object' && 'fontFamily' in node.style ? node.style.fontFamily as string : null) ?? null;
@@ -278,9 +275,8 @@ function extractTextStyles(node: FigmaNode) {
 }
 
 function nodeSummary(node: FigmaNode) {
-  // geometry (absoluteBoundingBox is the canonical positioning for REST)
   const bb = node?.absoluteBoundingBox || null;
-  const fill = extractFill(node?.fills || node?.backgrounds); // pages have backgrounds 
+  const fill = extractFill(node?.fills || node?.backgrounds);
   const stroke = extractStroke(node);
   const corners = extractCorners(node);
   const effects = extractEffects(node);
@@ -291,41 +287,47 @@ function nodeSummary(node: FigmaNode) {
     name: node?.name,
     type: node?.type,
     absoluteBoundingBox: bb,
-    // core styles
     fill,
     stroke,
     corners,
     effects,
-    // text (if any)
     text,
   };
 }
 
-function mapStylesFromTree(root: FigmaNode): unknown[] {
-  const out: unknown[] = [];
-  const walk = (n: FigmaNode) => {
-    if (!n) return;
-    // Only include drawable/visual nodes and text; skip DOCUMENT, SECTION/SLICE unless desired
+function buildHierarchy(root: FigmaNode): unknown[] {
+  const result: unknown[] = [];
+  const walk:any = (n: FigmaNode) => {
+    if (!n) return null;
+
     const visualTypes = new Set([
-      "FRAME",
-      "RECTANGLE",
-      "ELLIPSE",
-      "VECTOR",
-      "POLYGON",
-      "STAR",
-      "LINE",
-      "COMPONENT",
-      "INSTANCE",
-      "GROUP",
-      "TEXT",
-      "SECTION",
-      "SHAPE_WITH_TEXT",
+      "FRAME", "RECTANGLE", "ELLIPSE", "VECTOR", "POLYGON", "STAR", "LINE",
+      "COMPONENT", "INSTANCE", "GROUP", "TEXT", "SECTION", "SHAPE_WITH_TEXT",
     ]);
-    if (visualTypes.has(n?.type || "")) {
-      out.push(nodeSummary(n));
+
+    if (!visualTypes.has(n?.type || "")) {
+      if (n.children) {
+        return n.children.flatMap(walk);
+      }
+      return null;
     }
-    (n.children || []).forEach(walk);
+
+    const summary: any = nodeSummary(n);
+    if (n.children) {
+      const children = n.children.flatMap(walk).filter(Boolean);
+      if (children.length > 0) {
+        summary.children = children;
+      }
+    }
+
+    return summary;
   };
-  walk(root);
-  return out;
+
+  if (root.children) {
+    result.push(...root.children.flatMap(walk).filter(Boolean));
+  } else {
+    result.push(walk(root));
+  }
+
+  return result.filter(Boolean);
 }

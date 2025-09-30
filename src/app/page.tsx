@@ -10,6 +10,7 @@ import ConvertModal from "../../components/ConvertModal";
 import { findNodeById } from "../../lib/tree";
 import { useDrawable } from "../../hooks/useDrawable";
 import { NodeInput, ReferenceFrame } from "../../lib/figma-types";
+import Sidebar from "../../components/Sidebar";
 
 /** Immutable, safe updater that preserves children and only changes the target node */
 function updateNodeByIdSafe(roots: NodeInput[], id: string, mut: (n: NodeInput) => void): NodeInput[] {
@@ -91,7 +92,7 @@ export default function Page() {
       const res = await fetch("/api/figma/me");
       const data = await res.json();
       if (!data.error) setUser(data);
-    } catch {}
+    } catch { }
   }
 
   async function onFetch(fileUrlOrKey: string) {
@@ -183,6 +184,17 @@ export default function Page() {
     }
   }
 
+  const [images, setImages] = useState<Record<string, string | HTMLImageElement>>({});
+
+  function handleImageChange(key: string, url: string) {
+    setImages((prev) => {
+      const next = { ...prev };
+      if (!url) delete next[key];
+      else next[key] = url;
+      return next;
+    });
+  }
+
   return (
     <main className="min-h-screen w-screen h-screen flex flex-col">
       <Toolbar
@@ -203,6 +215,13 @@ export default function Page() {
       {fileName && <div className="px-3 py-2 text-sm border-b">File: {fileName}</div>}
 
       <div className="flex flex-1 min-h-0">
+        <Sidebar
+          rawRoots={rawRoots}
+          selectedIds={selectedIds}
+          setSelectedIds={setSelectedIds}
+          selectedFrameId={selectedFrameId}
+          setSelectedFrameId={setSelectedFrameId}
+        />
         <CanvasStage
           rawRoots={rawRoots}
           setRawRoots={setRawRoots}
@@ -214,8 +233,13 @@ export default function Page() {
           offset={offset}
           setOffset={setOffset}
           selectedFrame={selectedFrame}
+          images={images}
         />
-        <PropertiesPanel selectedNode={selectedNode} onUpdateSelected={updateSelected} />
+        <PropertiesPanel
+          selectedNode={selectedNode}
+          onUpdateSelected={updateSelected}
+          onImageChange={(id, url) => handleImageChange(id, url)}
+        />
       </div>
 
       <ConvertModal open={convertOpen} onClose={() => setConvertOpen(false)} onConfirm={(val) => convertFile(val)} />

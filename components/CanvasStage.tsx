@@ -1,9 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { DrawableNode, NodeInput, ReferenceFrame } from "../lib/figma-types";
 import { drawGrid, drawNodes, drawReferenceFrameOverlay } from "../lib/ccanvas-draw-bridge";
+
+type ImageLike = HTMLImageElement | string;
+type ImageMap = Record<string, ImageLike>; // keyed by node.id or node.name
 
 export default function CanvasStage(props: {
   rawRoots: NodeInput[] | null;
@@ -16,6 +19,7 @@ export default function CanvasStage(props: {
   offset: { x: number; y: number };
   setOffset: (v: { x: number; y: number }) => void;
   selectedFrame: ReferenceFrame | null;
+  images?: ImageMap; // NEW: map node id/name -> URL or HTMLImageElement
 }) {
   const {
     rawRoots,
@@ -28,6 +32,7 @@ export default function CanvasStage(props: {
     offset,
     setOffset,
     selectedFrame,
+    images = {},
   }: any = props;
 
   // overlay and base canvas
@@ -116,9 +121,12 @@ export default function CanvasStage(props: {
 
     target.addEventListener("wheel", onWheel, { passive: false });
     return () => target.removeEventListener("wheel", onWheel);
-  }, [scale, offset, setScale, setOffset]); [3][2]
+  }, [scale, offset, setScale, setOffset]); [11][12]
 
-  // pointer interactions
+  // Preload any string URLs in images into HTMLImageElement instances
+  const loadedImages = useImageMap(images);
+
+  // pointer interactions (unchanged) ...
   useEffect(() => {
     const canvas = canvasRef.current;
     const overlay = overlayRef.current;
@@ -329,19 +337,103 @@ export default function CanvasStage(props: {
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, viewportSize.width, viewportSize.height);
 
-    // draw grid
+    // base grid + shapes/text
     drawGrid(ctx, viewportSize.width, viewportSize.height, offset, scale, 100, 20);
-
-    // draw nodes with font fixed in screen space:
-    // the drawNodes implementation reads text styles; it should compute px via (fontSize / scale).
-    // If your drawNodes doesn’t yet do that, ensure it uses: px = Math.max(11, (fontSize || 12) / scale).
     drawNodes(ctx, drawableNodes, offset, scale, selectedIds, dragOffsetsRef.current, rawRoots || null);
 
-    // overlay
+    // draw images OVER shapes when available
+const FIT_MODE = "cover" as "cover" | "contain" | "stretch";
+
+for (const n of drawableNodes) {
+  const key = images[n.id] ? n.id : n.name; // prefer id
+  const asset = loadedImages[key];
+  const img = asset as HTMLImageElement | undefined;
+
+  if (!img || !img.complete || !img.naturalWidth || !img.naturalHeight) continue;
+
+  const x = offset.x + n.x * scale;
+  const y = offset.y + n.y * scale;
+  const w = Math.max(0.5, n.width * scale);
+  const h = Math.max(0.5, n.height * scale);
+
+  // Compute draw rect based on fit mode
+  let dx = x, dy = y, dw = w, dh = h;
+  if (FIT_MODE !== "stretch") {
+    const ir = img.naturalWidth / img.naturalHeight;
+    const br = w / h;
+    if (FIT_MODE === "cover") {
+      // fill box entirely, possibly cropping
+      if (ir > br) {
+        // image wider -> match height
+        dh = h;
+        dw = h * ir;
+        dx = x + (w - dw) / 2;
+        dy = y;
+      } else {
+        // image taller -> match width
+        dw = w;
+        dh = w / ir;
+        dx = x;
+        dy = y + (h - dh) / 2;
+      }
+    } else if (FIT_MODE === "contain") {
+      // letterbox inside box
+      if (ir > br) {
+        dw = w;
+        dh = w / ir;
+        dx = x;
+        dy = y + (h - dh) / 2;
+      } else {
+        dh = h;
+        dw = h * ir;
+        dx = x + (w - dw) / 2;
+        dy = y;
+      }
+    }
+  }
+
+  // Optional: clip to rounded corners if node has radius
+  const radius =
+    (rawRoots && (rawRoots.find((r:any) => r.id === n.id)?.corners?.uniform ??
+    rawRoots?.find((r:any) => r.id === n.id)?.corners?.topLeft ??
+    rawRoots?.find((r:any) => r.id === n.id)?.corners?.topRight ??
+    rawRoots?.find((r:any) => r.id === n.id)?.corners?.bottomRight ??
+    rawRoots?.find((r:any) => r.id === n.id)?.corners?.bottomLeft)) || 0;
+
+  try {
+    if (radius && radius > 0) {
+      const r = Math.min(radius * scale, Math.min(w, h) / 2);
+      ctx.save();
+      ctx.beginPath();
+      if ((ctx as any).roundRect) {
+        (ctx as any).roundRect(x, y, w, h, r);
+      } else {
+        // simple rounded rect path
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + w, y, x + w, y + h, r);
+        ctx.arcTo(x + w, y + h, x, y + h, r);
+        ctx.arcTo(x, y + h, x, y, r);
+        ctx.arcTo(x, y, x + w, y, r);
+        ctx.closePath();
+      }
+      ctx.clip();
+      ctx.drawImage(img, dx, dy, dw, dh);
+      ctx.restore();
+    } else {
+      ctx.drawImage(img, dx, dy, dw, dh);
+    }
+  } catch {
+    // If CORS taints canvas or other draw errors, skip drawing this image
+    // Ensure images are loaded with img.crossOrigin="anonymous" and proper ACAO headers. [2]
+    continue;
+  }
+}
+
+
+    // overlay pass
     octx.setTransform(dpr, 0, 0, dpr, 0, 0);
     octx.clearRect(0, 0, viewportSize.width, viewportSize.height);
 
-    // marquee
     if (isMarquee && marqueeStart.current && lastPointer.current) {
       const s1x = offset.x + marqueeStart.current.wx * scale;
       const s1y = offset.y + marqueeStart.current.wy * scale;
@@ -359,9 +451,8 @@ export default function CanvasStage(props: {
       octx.strokeRect(mx, my, mw, mh);
     }
 
-    // reference frame overlay
     if (selectedFrame) drawReferenceFrameOverlay(octx, selectedFrame, offset, scale);
-  }, [drawableNodes, viewportSize, offset, scale, selectedIds, isMarquee, tick, rawRoots, selectedFrame]);
+  }, [drawableNodes, viewportSize, offset, scale, selectedIds, isMarquee, tick, rawRoots, selectedFrame, loadedImages]);
 
   return (
     <div className="relative flex-1 bg-white" style={{ width: "100%", height: "100%", overflow: "hidden" }}>
@@ -370,3 +461,46 @@ export default function CanvasStage(props: {
     </div>
   );
 }
+
+/* Preload helper: convert string URLs to HTMLImageElement and memoize readiness */
+function useImageMap(map: ImageMap) {
+  const [state, setState] = useState<Record<string, HTMLImageElement>>({});
+  const entries = useMemo(() => Object.entries(map), [map]);
+
+  useEffect(() => {
+    let alive = true;
+    const next: Record<string, HTMLImageElement> = {};
+    let pending = 0;
+
+    const finish = () => { if (alive) setState({ ...next }); };
+
+    entries.forEach(([key, val]) => {
+      if (typeof val !== "string") {
+        const img = val as HTMLImageElement;
+        if (img && img.complete) next[key] = img;
+        else if (img) {
+          pending++;
+          const onLoad = () => { next[key] = img; if (--pending === 0) finish(); };
+          const onError = () => { if (--pending === 0) finish(); };
+          img.addEventListener("load", onLoad, { once: true });
+          img.addEventListener("error", onError, { once: true });
+        }
+        return;
+      }
+      const src = val as string;
+      const img = new Image();
+      pending++;
+      // CORS must be set BEFORE src to avoid tainting and to allow drawing at all
+      img.crossOrigin = "anonymous"; // server must send ACAO, or use same-origin/proxy [2]
+      img.onload = () => { next[key] = img; if (--pending === 0) finish(); };
+      img.onerror = () => { console.warn("Image failed to load:", src); if (--pending === 0) finish(); };
+      img.src = src; // set last [1]
+    });
+
+    if (pending === 0) finish();
+    return () => { alive = false; };
+  }, [entries]);
+
+  return state;
+}
+
