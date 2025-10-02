@@ -73,12 +73,20 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Missing fileUrl query param" }, { status: 400 });
     }
 
-    // Extract file key from URL
-    const match = fileUrl.match(/\/design\/([a-zA-Z0-9]+)\//);
-    if (!match) {
-      return NextResponse.json({ error: "Invalid Figma file URL" }, { status: 400 });
+    // Extract file key from URL or accept a raw key
+    const raw = fileUrl.trim();
+    // 1) raw key pasted directly
+    let fileKey = (raw.match(/^[a-zA-Z0-9]{10,64}$/)?.[0]) || "";
+
+    // 2) support multiple URL shapes: /design/<key>/..., /file/<key>/..., /proto/<key>/...
+    if (!fileKey) {
+      const m = raw.match(/\/(?:design|file|proto)\/([a-zA-Z0-9]+)(?:\/|$)/);
+      if (m) fileKey = m[1];
     }
-    const fileKey = match[1];
+
+    if (!fileKey) {
+      return NextResponse.json({ error: "Invalid Figma file URL or key" }, { status: 400 });
+    }
 
     // Build API URL
     const apiUrl = nodeId
