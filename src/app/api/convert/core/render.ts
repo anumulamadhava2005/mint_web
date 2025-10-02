@@ -87,6 +87,20 @@ export function cssFromDrawableLocal(d: DrawableNode) {
     if (d.text.textDecoration) (style as any).textDecoration = d.text.textDecoration as string;
   }
 
+  // UX overrides for horizontal overflow handling
+  if (d.ux?.scrollX) {
+    (style as any).overflowX = "auto";
+    (style as any).overflowY = "hidden";
+    // No white-space hack needed because children are absolutely positioned to compute scrollWidth
+    (style as any).WebkitOverflowScrolling = "touch";
+  }
+  if (d.ux?.snap) {
+    (style as any).scrollSnapType = "x mandatory";
+    (style as any).scrollBehavior = "smooth";
+  }
+  if (d.ux?.snapAlign) {
+    (style as any).scrollSnapAlign = d.ux.snapAlign;
+  }
   return style;
 }
 
@@ -166,30 +180,105 @@ function jsxBoxWithStyleTree(d: DrawableNode) {
 }
 
 /* ---------- Tree render ---------- */
+// core/render.ts
 export function renderTree(nodes: DrawableNode[], manifest: Map<string, string>, indent = 6): string {
   const pad = (n: number) => " ".repeat(n);
   const out: string[] = [];
+
   for (const n of nodes) {
     const kind = nodeKind(n);
+
+    // Container nodes
     if (n.children.length > 0) {
-      const style = JSON.stringify(cssFromDrawableLocal(n)).replace(/\"([^\"]+)\":/g, "$1:");
-      out.push(pad(indent) + `<div style={${style}} data-name=${JSON.stringify(n.name)}>`);
-      // If this node has an image fill, render it as a background layer inside the wrapper
+      // Base wrapper style from node
+      const wrapperStyleObj = cssFromDrawableLocal(n);
+
+      // If this container is a scroll wrapper, render with an inner rail
+      if (n.ux?.scrollX) {
+        // Peek behavior for carousels (set by tree pass on wrapper.ux.peek)
+        const doPeek = (n.ux as any)?.peek === true;
+        if (doPeek) {
+          // Give a bit of room on the right so the last slide can still peek without clipping
+          (wrapperStyleObj as any).paddingRight = 48;
+        }
+
+        const wrapperStyle = JSON.stringify(wrapperStyleObj).replace(/\"([^\"]+)\":/g, "$1:");
+
+        // Rail width is the farthest child right edge (children x are already normalized by tree pass)
+        const railW = Math.max(1, ...n.children.map(c => c.x + c.w));
+        const railStyleObj: any = { position: "relative", width: railW, height: "100%" };
+        if (doPeek) {
+          // Offset the rail to show a hint of previous/next slide without affecting scrollWidth
+          railStyleObj.marginLeft = -48;
+        }
+        const railStyle = JSON.stringify(railStyleObj).replace(/\"([^\"]+)\":/g, "$1:");
+
+        out.push(pad(indent) + `<div style={${wrapperStyle}} data-name=${JSON.stringify(n.name)}>`);
+        out.push(pad(indent + 2) + `<div style={${railStyle}}>`);
+        // Render children inside the rail
+        for (const c of n.children) {
+          // Compute child style and apply UX decorations if present
+          const cs = cssFromDrawableLocal(c);
+
+          // Elevation: emphasized card in strip rows
+          if ((c.ux as any)?.elevate) {
+            (cs as any).zIndex = 2;
+            const base = (cs as any).boxShadow || "0px 0px 13px 0px rgba(0,0,0,0.20)";
+            (cs as any).boxShadow = "0px 12px 28px rgba(0,0,0,0.22), " + base;
+          } else if (n.ux?.scrollX && !(c.ux as any)?.snapAlign) {
+            // Side cards in strips: soften shadow slightly if present
+            const base = (cs as any).boxShadow;
+            if (base) (cs as any).boxShadow = base.replace(/0\.2\)/g, "0.14)");
+          }
+
+          // Scroll snapping for carousel slides
+          if (c.ux?.snapAlign) (cs as any).scrollSnapAlign = c.ux.snapAlign;
+
+          const csJson = JSON.stringify(cs).replace(/\"([^\"]+)\":/g, "$1:");
+          const ck = nodeKind(c);
+
+          if (ck === "IMAGE" && c.children.length === 0) {
+            // Leaf image
+            out.push(pad(indent + 4) + jsxImgWithStyleLocalTree(c, manifest));
+          } else if (c.children.length > 0) {
+            // Nested container as positioned box within rail
+            out.push(pad(indent + 4) + `<div style={${csJson}} data-name=${JSON.stringify(c.name)}>`);
+            out.push(renderTree(c.children, manifest, indent + 6));
+            out.push(pad(indent + 4) + `</div>`);
+          } else {
+            // Primitive box/text
+            out.push(pad(indent + 4) + jsxBoxWithStyleTree(c));
+          }
+        }
+        out.push(pad(indent + 2) + `</div>`);
+        out.push(pad(indent) + `</div>`);
+        continue;
+      }
+
+      // Regular non-scroll container: still allow an image fill under its children
+      const wrapperStyle = JSON.stringify(wrapperStyleObj).replace(/\"([^\"]+)\":/g, "$1:");
+      out.push(pad(indent) + `<div style={${wrapperStyle}} data-name=${JSON.stringify(n.name)}>`);
       if (kind === "IMAGE") {
         const bgImg = jsxImgCoverInsideWrapper(n, manifest);
         if (bgImg) out.push(pad(indent + 2) + bgImg);
       }
       out.push(renderTree(n.children, manifest, indent + 2));
       out.push(pad(indent) + `</div>`);
-    } else if (kind === "IMAGE") {
-      // Leaf image node
+      continue;
+    }
+
+    // Leaves
+    if (kind === "IMAGE") {
       out.push(pad(indent) + jsxImgWithStyleLocalTree(n, manifest));
     } else {
       out.push(pad(indent) + jsxBoxWithStyleTree(n));
     }
   }
+
   return out.join("\n");
 }
+
+
 
 /* ---------- React helpers injected into pages/apps ---------- */
 export function boxHelperTsStyled() {

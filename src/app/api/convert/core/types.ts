@@ -57,12 +57,26 @@ export type Drawable = {
   fill?: FillStyle | null; stroke?: StrokeStyle | null; corners?: Corners | null;
   effects?: EffectStyle[] | null; text?: TextStyle | null;
 };
+export type UXMeta = {
+  // Existing flags
+  scrollX?: boolean;                                // wrapper should scroll horizontally
+  snap?: boolean;                                   // wrapper uses scroll-snap x mandatory
+  snapAlign?: "start" | "center" | "end";           // child slide snapping alignment
+  wrapped?: boolean;                                // internal: parent has been processed
+
+  // New polish flags
+  peek?: boolean;                                   // carousel: show a small edge peek
+  elevate?: boolean;                                // strip: visually emphasize this child
+};
+
 export type DrawableNode = {
   id: string; name: string; type: string;
   ax: number; ay: number; x: number; y: number; w: number; h: number;
-  textRaw?: string | null; fill?: FillStyle | null; stroke?: StrokeStyle | null;
-  corners?: Corners | null; effects?: EffectStyle[] | null; text?: TextStyle | null;
+  textRaw?: string | null;
+  fill?: FillStyle | null; stroke?: StrokeStyle | null; corners?: Corners | null;
+  effects?: EffectStyle[] | null; text?: TextStyle | null;
   children: DrawableNode[];
+  ux?: UXMeta;                                      // include UX meta here
 };
 export type ReferenceFrame = { id: string; x: number; y: number; width: number; height: number };
 export type Payload = { target: string; fileName: string; nodes: NodeInput[]; referenceFrame?: ReferenceFrame | null };
