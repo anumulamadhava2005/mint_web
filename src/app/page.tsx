@@ -10,7 +10,7 @@ import { findNodeById } from "../../lib/tree";
 import { useDrawable } from "../../hooks/useDrawable";
 import { NodeInput, ReferenceFrame } from "../../lib/figma-types";
 import Sidebar from "../../components/Sidebar";
-import Home from "./home";
+import { Home } from "../../components/home";
 
 /** Immutable, safe updater that preserves children and only changes the target node */
 function updateNodeByIdSafe(roots: NodeInput[], id: string, mut: (n: NodeInput) => void): NodeInput[] {
@@ -52,6 +52,7 @@ export default function Page() {
   const [convertOpen, setConvertOpen] = useState(false);
 
   const { drawableNodes, frameOptions } = useDrawable(rawRoots);
+  const [fitPending, setFitPending] = useState(false);
 
   const selectedFrame: ReferenceFrame | null = useMemo(
     () => (selectedFrameId ? frameOptions.find((f) => f.id === selectedFrameId) ?? null : null),
@@ -85,6 +86,8 @@ export default function Page() {
     setScale(s);
     setOffset({ x: pad - minX * s, y: pad - minY * s });
   }, [drawableNodes]);
+
+  // Toolbar is always visible now
 
   async function fetchUser() {
     try {
@@ -166,6 +169,8 @@ export default function Page() {
       } else {
         setRawRoots(roots);
         setSelectedIds(new Set());
+        setFitPending(true); // trigger auto-fit after render
+  // setToolbarHidden(true); // Toolbar always visible
       }
       setFileName(fName);
     } catch (e: any) {
@@ -174,6 +179,14 @@ export default function Page() {
       setLoading(false);
     }
   }
+
+  // Auto-fit after new nodes are loaded
+  useEffect(() => {
+    if (fitPending && drawableNodes.length) {
+      fitToScreen();
+      setFitPending(false);
+    }
+  }, [fitPending, drawableNodes, fitToScreen]);
 
   async function requestConversion(target: string, nodes: any[], name: string | null, referenceFrame: ReferenceFrame | null) {
     const res = await fetch("/api/convert", {
@@ -218,10 +231,42 @@ export default function Page() {
     return <Home onGetStarted={() => setShowConverter(true)} />;
   }
 
+  // Logout handler: clear cookies and user state
+  function handleLogout() {
+    const cookiesToClear = [
+      "session", ".session", "token", "auth", "user", "sid", "figma_access", "figma_refresh"
+    ];
+    cookiesToClear.forEach((name) => {
+      document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+    });
+    setUser(null);
+    setShowConverter(false);
+    setFileName(null);
+    setRawRoots(null);
+    setError(null);
+    setSelectedIds(new Set());
+    setSelectedFrameId("");
+    setImages({});
+    setScale(1);
+    setOffset({ x: 0, y: 0 });
+    setConvertOpen(false);
+    // Optionally, force reload to clear any cached state
+    // window.location.reload();
+  }
+
   return (
     <div className="flex flex-col h-screen w-screen bg-gray-950 text-white overflow-hidden">
       {/* Toolbar - Top bar with dark theme */}
-      <div className="bg-gray-900 border-b border-gray-800 flex-shrink-0">
+      <div
+        className="bg-gray-900 border-b border-gray-800 flex-shrink-0"
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 50,
+        }}
+      >
         <Toolbar
           user={user}
           onConnect={() => (window.location.href = "/api/auth/login")}
@@ -235,6 +280,7 @@ export default function Page() {
           fitToScreen={fitToScreen}
           openConvert={() => setConvertOpen(true)}
           zoomPct={scale * 100}
+          onLogout={handleLogout}
         />
       </div>
 
@@ -245,8 +291,8 @@ export default function Page() {
         </div>
       )}
 
-      {/* Main Content Area - 3 column layout */}
-      <div className="flex flex-1 min-h-0 overflow-hidden">
+  {/* Main Content Area - 3 column layout */}
+  <div className="flex flex-1 min-h-0 overflow-hidden pt-[125px]">
         {/* Left Sidebar - Layers Panel */}
         <Sidebar
           rawRoots={rawRoots}

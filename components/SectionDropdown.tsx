@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { NodeInput } from "../../lib/figma-types";
+import { NodeInput } from "../lib/figma-types";
 
 // Helper function to find top-level sections (typically frames)
 function getTopLevelFrames(nodes: NodeInput[] | null): NodeInput[] {

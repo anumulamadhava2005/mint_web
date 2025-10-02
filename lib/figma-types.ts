@@ -65,7 +65,13 @@ export type DrawableNode = {
   y: number;
   width: number;
   height: number;
+  children: DrawableNode[];
   textContent?: string | null;
+  fill?: FillStyle;
+  stroke?: StrokeStyle;
+  corners?: Corners;
+  effects?: Array<Exclude<EffectStyle, null>> | null;
+  text?: TextStyle;
 };
 
 export type ReferenceFrame = {

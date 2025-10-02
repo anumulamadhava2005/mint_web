@@ -60,9 +60,20 @@ export function drawNodes(
   transientOffsets: Map<string, { dx: number; dy: number }>,
   rawRoots: NodeInput[] | null
 ) {
-  const findRaw = (id: string) => rawRoots?.find((n) => n.id === id);
+  // Helper to find the raw node by id
+  function findRaw(id: string) {
+    if (!rawRoots) return undefined;
+    const stack = [...rawRoots];
+    while (stack.length) {
+      const node = stack.pop();
+      if (!node) continue;
+      if (node.id === id) return node;
+      if (node.children) stack.push(...node.children);
+    }
+    return undefined;
+  }
 
-  // simple word-wrap helper
+  // Simple word-wrap helper
   function wrapAndDrawText(
     ctx2: CanvasRenderingContext2D,
     text: string,
@@ -105,30 +116,34 @@ export function drawNodes(
     const rawNode = findRaw(n.id);
     const isTextNode = (n.type || "").toUpperCase() === "TEXT";
 
-    // Fill background ONLY for non-text nodes
+    // --- Fill/Background ---
     if (!isTextNode) {
       if (rawNode?.fill) {
         if (rawNode.fill.type === "SOLID" && rawNode.fill.color) {
           ctx.fillStyle = rawNode.fill.color;
         } else if (rawNode.fill.type && rawNode.fill.type.startsWith("GRADIENT") && rawNode.fill.stops?.length) {
-          const gradient = ctx.createLinearGradient(x, y, x + w, y);
-          rawNode.fill.stops.forEach((stop) => gradient.addColorStop(stop.position, stop.color));
+          // Use vertical gradient as default
+          const gradient = ctx.createLinearGradient(x, y, x, y + h);
+          rawNode.fill.stops.forEach((stop: any) => gradient.addColorStop(stop.position, stop.color));
           ctx.fillStyle = gradient;
+        } else if (rawNode.fill.type === "IMAGE" && rawNode.fill.imageRef) {
+          // Optionally, you can draw an image here if you have it loaded
+          ctx.fillStyle = "#fff";
         } else {
-          ctx.fillStyle = "rgba(59,130,246,0.08)";
+          ctx.fillStyle = "#fff";
         }
       } else {
-        ctx.fillStyle = "rgba(59,130,246,0.08)";
+        ctx.fillStyle = "#fff";
       }
     }
 
-    // Stroke ONLY for non-text nodes
+    // --- Border/Stroke ---
     if (!isTextNode) {
       if (rawNode?.stroke) {
         ctx.strokeStyle = rawNode.stroke.color || "#3b82f6";
         ctx.lineWidth = (rawNode.stroke.weight || 2) * scale;
         if (rawNode.stroke.dashPattern && rawNode.stroke.dashPattern.length) {
-          ctx.setLineDash(rawNode.stroke.dashPattern.map((d) => d * scale));
+          ctx.setLineDash(rawNode.stroke.dashPattern.map((d: any) => d * scale));
         } else {
           ctx.setLineDash([]);
         }
@@ -139,9 +154,9 @@ export function drawNodes(
       }
     }
 
-    // Shadow (boxShadow string)
+    // --- Shadow/Effects ---
     if (rawNode?.effects && rawNode.effects.length > 0) {
-      const effect = rawNode.effects.find((e) => e.boxShadow);
+      const effect = rawNode.effects.find((e: any) => e.boxShadow);
       if (effect?.boxShadow) {
         const m = effect.boxShadow.match(
           /(inset\s+)?(-?\d+(?:\.\d+)?)px\s+(-?\d+(?:\.\d+)?)px\s+(\d+(?:\.\d+)?)px(?:\s+(\d+(?:\.\d+)?)px)?\s+(rgba?\([^)]+\)|#[0-9a-fA-F]+.*)$/
@@ -160,9 +175,10 @@ export function drawNodes(
       }
     }
 
-    // Corners and shape drawing for non-text
+    // --- Corners/Radius ---
+    let radius = 0;
     if (!isTextNode) {
-      const radius =
+      radius =
         rawNode?.corners?.uniform ??
         rawNode?.corners?.topLeft ??
         rawNode?.corners?.topRight ??
@@ -191,13 +207,13 @@ export function drawNodes(
       }
     }
 
-    // Reset effects after shape
+    // --- Reset effects after shape ---
     ctx.shadowOffsetX = 0;
     ctx.shadowOffsetY = 0;
     ctx.shadowBlur = 0;
     ctx.setLineDash([]);
 
-    // Selection outline
+    // --- Selection outline ---
     if (selectedIds.has(n.id)) {
       ctx.lineWidth = 2;
       ctx.strokeStyle = "#10b981";
@@ -206,49 +222,26 @@ export function drawNodes(
       ctx.setLineDash([]);
     }
 
-    // Debug label
-    ctx.fillStyle = "#111";
-    ctx.font = "12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
-    ctx.textBaseline = "top";
-    ctx.fillText(n.name ?? n.id, x + 6, y + 6);
-
-    // Fallback text preview (no styled characters)
-    if (n.textContent && !rawNode?.text?.characters) {
-      const basePx = 20; // 100% zoom size
-      const scaledPx = basePx * scale; // 200% -> 40px, 50% -> 10px
-      ctx.fillStyle = "#333";
-      ctx.font = `${scaledPx}px system - ui, -apple - system, Segoe UI, Roboto, sans - serif`;
-      const content = n.textContent.replace(/\s+/g, " ").trim();
-      const startX = x + 6;
-      const startY = y + 22;
-      const maxW = Math.max(0, w - 12);
-      const lineH = Math.ceil(scaledPx * 1.3);
-      wrapAndDrawText(ctx, content, startX, startY, maxW, lineH);
-    }
-
-
-
-    // Styled text (TEXT nodes)
-    // Styled text (TEXT nodes) with zoom-proportional size
-    if (rawNode?.text) {
+    // --- Text rendering ---
+    if (isTextNode && rawNode?.text) {
       const t: any = rawNode.text;
       const fam = t.fontFamily || "system-ui";
       const basePx = t.fontSize || 20; // size at 100% zoom
       const scaledPx = basePx * scale; // proportional with zoom
       ctx.fillStyle = t.color || "#333";
-      ctx.font = `${ scaledPx }px ${ fam }`;
+      ctx.font = `${scaledPx}px ${fam}`;
+      ctx.textBaseline = "top";
+      ctx.textAlign = "left";
       const chars = (t.characters || "").replace(/\s+/g, " ").trim();
       if (chars) {
-        const paddingX = 6;
+        const paddingX = 0;
         const startX = x + paddingX;
-        const startY = y + 22;
+        const startY = y;
         const maxW = Math.max(0, w - paddingX * 2);
         const lineH = Math.ceil(scaledPx * 1.3);
         wrapAndDrawText(ctx, chars, startX, startY, maxW, lineH);
       }
     }
-
-
   });
 }
 
