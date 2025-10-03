@@ -3,22 +3,20 @@ export function globalsCss() {
   return `:root { color-scheme: light; }
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; height: 100%; }
-html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
-/* Prevent background bleed past rounded parents without clipping children */
+.text-wrap { white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
 [data-name][style*="border-radius"],
 [data-name][style*="border-top-left-radius"],
 [data-name][style*="border-top-right-radius"],
 [data-name][style*="border-bottom-left-radius"],
 [data-name][style*="border-bottom-right-radius"] > * { border-radius: inherit; }
-/* Optional: stabilize paint for rounded elements that rely on large shadows */
 [data-name][style*="border-radius"],
 [data-name][style*="border-top-left-radius"],
 [data-name][style*="border-top-right-radius"],
 [data-name][style*="border-bottom-left-radius"],
 [data-name][style*="border-bottom-right-radius"] { contain: paint; }
-[data-name] > div { overflow: visible; }
-`;
+* { transform-style: preserve-3d; }`;
 }
+
 export function tokensTs() {
   return `export const tokens = {
   colors: { primary: "#3b82f6", accent: "#FF5733", text: "#111111", muted: "#333333" },
