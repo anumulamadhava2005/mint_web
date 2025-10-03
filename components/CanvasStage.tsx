@@ -103,20 +103,23 @@ export default function CanvasStage(props: {
     if (!target) return
 
     const onWheel = (e: WheelEvent) => {
-      if (!(e.ctrlKey || e.metaKey)) return
-      e.preventDefault()
-      const rect = target.getBoundingClientRect()
-      const cx = e.clientX - rect.left
-      const cy = e.clientY - rect.top
-      const intensity = 0.0015
-      const dir = -e.deltaY
-      const next = Math.max(0.05, Math.min(10, scale * (1 + dir * intensity)))
-      const wx = (cx - offset.x) / scale
-      const wy = (cy - offset.y) / scale
-      const nx = cx - wx * next
-      const ny = cy - wy * next
-      setScale(next)
-      setOffset({ x: nx, y: ny })
+      // Always allow zoom with wheel (trackpad or mouse), block browser zoom
+      e.preventDefault();
+      const rect = target.getBoundingClientRect();
+      const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
+      // Clamp deltaY to avoid huge jumps (trackpad/mouse differences)
+      let delta = Math.max(-100, Math.min(100, e.deltaY));
+      // Use a stable zoom factor
+      const zoomFactor = Math.exp(-delta * 0.002);
+      let next = scale * zoomFactor;
+      next = Math.max(0.05, Math.min(10, next));
+      const wx = (cx - offset.x) / scale;
+      const wy = (cy - offset.y) / scale;
+      const nx = cx - wx * next;
+      const ny = cy - wy * next;
+      setScale(next);
+      setOffset({ x: nx, y: ny });
     }
 
     target.addEventListener("wheel", onWheel, { passive: false })
@@ -334,8 +337,10 @@ export default function CanvasStage(props: {
     ctx.fillStyle = "#ffffff"
     ctx.fillRect(0, 0, viewportSize.width, viewportSize.height)
 
-    // base grid + shapes/text
-    drawGrid(ctx, viewportSize.width, viewportSize.height, offset, scale, 100, 20)
+    // Show grid only if there are no drawable nodes (before fetch)
+    if (!drawableNodes || drawableNodes.length === 0) {
+      drawGrid(ctx, viewportSize.width, viewportSize.height, offset, scale, 100, 20)
+    }
     drawNodes(ctx, drawableNodes, offset, scale, selectedIds, dragOffsetsRef.current, rawRoots || null)
 
     // draw images OVER shapes when available
@@ -520,5 +525,5 @@ function useImageMap(map: ImageMap) {
     }
   }, [entries])
 
-  return state
+;  return state
 }

@@ -11,6 +11,7 @@ import { useDrawable } from "../../hooks/useDrawable";
 import { NodeInput, ReferenceFrame } from "../../lib/figma-types";
 import Sidebar from "../../components/Sidebar";
 import { Home } from "../../components/home";
+import Spinner from "../../components/Spinner";
 
 /** Immutable, safe updater that preserves children and only changes the target node */
 function updateNodeByIdSafe(roots: NodeInput[], id: string, mut: (n: NodeInput) => void): NodeInput[] {
@@ -35,13 +36,25 @@ function updateNodeByIdSafe(roots: NodeInput[], id: string, mut: (n: NodeInput) 
   return roots.map(rec);
 }
 
-export default function Page() {
+
+
+function HomePage() {
+  async function convertFile(target: string) {
+    const nodesToSend = rawRoots ?? [];
+    try {
+      await requestConversion(target.toLowerCase().replace(/\s+/g, "-"), nodesToSend as any[], fileName || "FigmaFile", selectedFrame);
+    } catch (e: any) {
+      alert(e?.message || String(e));
+    } finally {
+      setConvertOpen(false);
+    }
+  }
   const [showConverter, setShowConverter] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [rawRoots, setRawRoots] = useState<NodeInput[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectedFrameId, setSelectedFrameId] = useState<string>("");
@@ -50,6 +63,39 @@ export default function Page() {
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [convertOpen, setConvertOpen] = useState(false);
+
+  // --- History for undo/redo ---
+  const [history, setHistory] = useState<{ scale: number; offset: { x: number; y: number } }[]>([]);
+  const [redoStack, setRedoStack] = useState<{ scale: number; offset: { x: number; y: number } }[]>([]);
+
+  // Push to history on scale/offset change
+  useEffect(() => {
+    setHistory((prev) => [...prev, { scale, offset }]);
+    setRedoStack([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scale, offset]);
+
+  const handleZoomIn = () => setScale((s) => Math.min(10, s * 1.1));
+  const handleZoomOut = () => setScale((s) => Math.max(0.05, s / 1.1));
+  const handleZoomReset = () => setScale(1);
+  const handleUndo = () => {
+    if (history.length > 1) {
+      setRedoStack((redo) => [history[history.length - 1], ...redo]);
+      const prev = history[history.length - 2];
+      setScale(prev.scale);
+      setOffset(prev.offset);
+      setHistory((h) => h.slice(0, -1));
+    }
+  };
+  const handleRedo = () => {
+    if (redoStack.length > 0) {
+      const next = redoStack[0];
+      setScale(next.scale);
+      setOffset(next.offset);
+      setHistory((h) => [...h, next]);
+      setRedoStack((redo) => redo.slice(1));
+    }
+  };
 
   const { drawableNodes, frameOptions } = useDrawable(rawRoots);
   const [fitPending, setFitPending] = useState(false);
@@ -95,16 +141,17 @@ export default function Page() {
       const data = await res.json();
       if (!data.error) {
         setUser(data);
+        setLoading(false);
         return data;
       }
-    } catch { }
+    } catch {}
+    setLoading(false);
     return null;
   }
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const justLoggedIn = params.get('logged_in');
-    
     fetchUser().then((userData) => {
       if (justLoggedIn && userData) {
         setShowConverter(true);
@@ -207,17 +254,6 @@ export default function Page() {
     URL.revokeObjectURL(url);
   }
 
-  async function convertFile(target: string) {
-    const nodesToSend = rawRoots ?? [];
-    try {
-      await requestConversion(target.toLowerCase().replace(/\s+/g, "-"), nodesToSend as any[], fileName || "FigmaFile", selectedFrame);
-    } catch (e: any) {
-      alert(e?.message || String(e));
-    } finally {
-      setConvertOpen(false);
-    }
-  }
-
   function handleImageChange(key: string, url: string) {
     setImages((prev) => {
       const next = { ...prev };
@@ -225,10 +261,6 @@ export default function Page() {
       else next[key] = url;
       return next;
     });
-  }
-
-  if (!showConverter && !rawRoots && !user) {
-    return <Home onGetStarted={() => setShowConverter(true)} />;
   }
 
   // Logout handler: clear cookies and user state
@@ -254,8 +286,13 @@ export default function Page() {
     // window.location.reload();
   }
 
+  if (!showConverter && !rawRoots && !user && !loading) {
+    return <Home onGetStarted={() => setShowConverter(true)} />;
+  }
+
   return (
     <div className="flex flex-col h-screen w-screen bg-gray-950 text-white overflow-hidden">
+      {loading && <Spinner />}
       {/* Toolbar - Top bar with dark theme */}
       <div
         className="bg-gray-900 border-b border-gray-800 flex-shrink-0"
@@ -281,6 +318,13 @@ export default function Page() {
           openConvert={() => setConvertOpen(true)}
           zoomPct={scale * 100}
           onLogout={handleLogout}
+          onZoomIn={handleZoomIn}
+          onZoomOut={handleZoomOut}
+          onZoomReset={handleZoomReset}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          canUndo={history.length > 1}
+          canRedo={redoStack.length > 0}
         />
       </div>
 
@@ -291,8 +335,8 @@ export default function Page() {
         </div>
       )}
 
-  {/* Main Content Area - 3 column layout */}
-  <div className="flex flex-1 min-h-0 overflow-hidden pt-[125px]">
+      {/* Main Content Area - 3 column layout */}
+      <div className="flex flex-1 min-h-0 overflow-hidden pt-[125px]">
         {/* Left Sidebar - Layers Panel */}
         <Sidebar
           rawRoots={rawRoots}
@@ -340,3 +384,5 @@ export default function Page() {
     </div>
   );
 }
+
+export default HomePage;

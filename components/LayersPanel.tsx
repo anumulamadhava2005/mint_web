@@ -38,9 +38,9 @@ const SortableLayer: React.FC<{
   const isExpanded = expandedIds.has(layer.id)
 
   return (
-    <motion.div ref={setNodeRef} style={style} layout>
+    <motion.div ref={setNodeRef} style={style} layout className="flex flex-col items-center w-full">
       <div
-        className={`flex items-center gap-1 px-2 py-1.5 text-sm rounded cursor-pointer transition-colors ${
+        className={`flex items-center gap-1 px-2 py-1.5 text-sm rounded cursor-pointer transition-colors w-full ${
           isSelected ? "bg-primary text-primary-foreground" : "bg-card text-foreground hover:bg-muted"
         }`}
         onClick={(e) => {
@@ -80,11 +80,11 @@ const SortableLayer: React.FC<{
       <AnimatePresence initial={false}>
         {hasChildren && isExpanded && (
           <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="ml-6 mt-0.5 space-y-0.5"
+            initial={{ height: 0, opacity: 0, scale: 0.98 }}
+            animate={{ height: "auto", opacity: 1, scale: 1 }}
+            exit={{ height: 0, opacity: 0, scale: 0.98 }}
+            transition={{ duration: 0.22, ease: "easeInOut" }}
+            className="ml-6 mt-0.5 space-y-0.5 bg-black rounded-lg p-1 border border-gray-700 text-white"
           >
             {layer.children!.map((child) => (
               <ChildLayer
@@ -117,10 +117,10 @@ const ChildLayer: React.FC<{
   const isExpanded = expandedIds.has(layer.id)
 
   return (
-    <div>
+    <div className="flex flex-col items-center w-full">
       <div
-        className={`flex items-center gap-1 px-2 py-1.5 text-sm rounded cursor-pointer hover:bg-slate-700/50 ${
-          isSelected ? "bg-blue-600 text-white" : "bg-slate-800 text-slate-200"
+        className={`flex items-center gap-1 px-2 py-1.5 text-sm rounded cursor-pointer w-full border ${
+          isSelected ? "bg-blue-600 text-white border-blue-400" : "bg-gray-900 text-white border-gray-700 hover:bg-gray-800"
         }`}
         onClick={(e) => {
           e.stopPropagation()
@@ -151,7 +151,7 @@ const ChildLayer: React.FC<{
       </div>
 
       {hasChildren && isExpanded && (
-        <div className="ml-6 mt-0.5 space-y-0.5">
+  <div className="ml-6 mt-0.5 space-y-0.5 bg-black rounded-lg p-1 border border-gray-700 text-white">
           {layer.children!.map((child) => (
             <ChildLayer
               key={child.id}

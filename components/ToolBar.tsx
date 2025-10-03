@@ -22,6 +22,13 @@ export default function Toolbar(props: {
   openConvert: () => void
   zoomPct: number
   onLogout?: () => void
+  onZoomIn: () => void
+  onZoomOut: () => void
+  onZoomReset: () => void
+  onUndo: () => void
+  onRedo: () => void
+  canUndo: boolean
+  canRedo: boolean
 }) {
   const {
     user,
@@ -68,40 +75,63 @@ export default function Toolbar(props: {
   }
 
   return (
-    <div className="bg-background/80 border-b border-border backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <div style={{
+      background: 'rgba(24,24,27,0.8)',
+      borderBottom: '1px solid #333',
+      backdropFilter: 'blur(4px)',
+      WebkitBackdropFilter: 'blur(4px)',
+      width: '100%',
+    }}>
       {/* Top Row - Branding and User */}
       <motion.div
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35, ease: "easeOut" }}
-        className="px-4 py-2 flex items-center gap-3 border-b border-border"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          padding: '12px 16px',
+          borderBottom: '1px solid #333',
+        }}
       >
-        <h1 className="text-lg font-semibold text-foreground text-pretty">Figma Node Visualizer</h1>
-        <div className="flex-1" />
+        <h1 style={{ fontSize: 20, fontWeight: 600, color: '#fff', letterSpacing: 0.2 }}>Figma Node Visualizer</h1>
+        <div style={{ flex: 1 }} />
         {!user ? (
           <button
             onClick={onConnect}
-            className="rounded-lg px-4 py-1.5 bg-primary text-primary-foreground text-sm font-medium transition-colors hover:bg-primary/90"
+            style={{
+              borderRadius: 8,
+              padding: '6px 16px',
+              background: '#2563eb',
+              color: '#fff',
+              fontSize: 14,
+              fontWeight: 500,
+              border: 'none',
+              cursor: 'pointer',
+              transition: 'background 0.2s',
+            }}
+            onMouseOver={e => (e.currentTarget.style.background = '#1d4ed8')}
+            onMouseOut={e => (e.currentTarget.style.background = '#2563eb')}
           >
             Connect Figma
           </button>
         ) : (
           <div
-            className="flex items-center gap-2 relative"
+            style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative', cursor: 'pointer' }}
             onMouseEnter={() => setProfileHovered(true)}
             onMouseLeave={() => setProfileHovered(false)}
-            style={{ cursor: "pointer" }}
           >
             <Image
               src={user.img_url || "/placeholder.svg"}
               alt={user.handle}
               width={28}
               height={28}
-              className="w-7 h-7 rounded-full border border-gray-700"
+              style={{ width: 28, height: 28, borderRadius: '50%', border: '1px solid #444' }}
             />
-            <div className="text-xs">
-              <div className="font-medium text-gray-200">@{user.handle}</div>
-              {user.email && <div className="text-gray-500">{user.email}</div>}
+            <div style={{ fontSize: 12 }}>
+              <div style={{ fontWeight: 500, color: '#e5e7eb' }}>@{user.handle}</div>
+              {user.email && <div style={{ color: '#9ca3af' }}>{user.email}</div>}
             </div>
             <AnimatePresence>
               {profileHovered && (
@@ -111,8 +141,24 @@ export default function Toolbar(props: {
                   exit={{ opacity: 0, y: -10 }}
                   transition={{ duration: 0.2 }}
                   onClick={handleLogout}
-                  className="absolute right-0 top-10 z-10 px-4 py-2 rounded bg-gray-800 text-white text-xs font-medium shadow border border-gray-700 hover:bg-red-600 hover:text-white transition-colors"
-                  style={{ minWidth: 90 }}
+                  style={{
+                    position: 'absolute',
+                    right: 0,
+                    top: 40,
+                    zIndex: 10,
+                    padding: '8px 16px',
+                    borderRadius: 8,
+                    background: profileHovered ? '#dc2626' : '#23272f',
+                    color: '#fff',
+                    fontSize: 12,
+                    fontWeight: 500,
+                    border: '1px solid #444',
+                    minWidth: 90,
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+                    transition: 'background 0.2s, color 0.2s',
+                  }}
+                  onMouseOver={e => (e.currentTarget.style.background = '#dc2626')}
+                  onMouseOut={e => (e.currentTarget.style.background = '#23272f')}
                 >
                   Log out
                 </motion.button>
@@ -127,11 +173,30 @@ export default function Toolbar(props: {
         initial={{ opacity: 0, y: -6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35, ease: "easeOut", delay: 0.05 }}
-        className="px-4 py-2 flex items-center gap-3"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          padding: '12px 16px',
+        }}
       >
+        {/* Zoom/Undo/Redo Controls */}
+  <button onClick={props.onZoomOut} style={{ borderRadius: 6, padding: '4px 10px', background: '#23272f', border: '1px solid #444', color: '#fff', fontSize: 14, fontWeight: 500, marginRight: 2, cursor: 'pointer' }}>-</button>
+  <button onClick={props.onZoomIn} style={{ borderRadius: 6, padding: '4px 10px', background: '#23272f', border: '1px solid #444', color: '#fff', fontSize: 14, fontWeight: 500, marginRight: 8, cursor: 'pointer' }}>+</button>
+  <button onClick={props.onUndo} disabled={!props.canUndo} style={{ borderRadius: 6, padding: '4px 10px', background: '#23272f', border: '1px solid #444', color: '#fff', fontSize: 14, fontWeight: 500, marginRight: 8, marginLeft: 16, cursor: props.canUndo ? 'pointer' : 'not-allowed', opacity: props.canUndo ? 1 : 0.5 }}>Undo</button>
+  <button onClick={props.onRedo} disabled={!props.canRedo} style={{ borderRadius: 6, padding: '4px 10px', background: '#23272f', border: '1px solid #444', color: '#fff', fontSize: 14, fontWeight: 500, marginRight: 8, cursor: props.canRedo ? 'pointer' : 'not-allowed', opacity: props.canRedo ? 1 : 0.5 }}>Redo</button>
         {/* File Input */}
         <input
-          className="flex-1 bg-muted border border-border rounded-lg px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-shadow"
+          style={{
+            flex: 1,
+            background: '#23272f',
+            border: '1px solid #444',
+            borderRadius: 8,
+            padding: '6px 12px',
+            fontSize: 14,
+            color: '#fff',
+            marginRight: 8,
+          }}
           placeholder="Paste Figma file URL or key"
           value={fileInputVal}
           onChange={(e) => setFileInputVal(e.target.value)}
@@ -141,21 +206,44 @@ export default function Toolbar(props: {
         />
         <button
           onClick={handleFetch}
-          className="rounded-lg px-4 py-1.5 bg-primary text-primary-foreground text-sm font-medium transition-colors hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{
+            borderRadius: 8,
+            padding: '6px 16px',
+            background: loading ? '#3b82f6' : '#2563eb',
+            color: '#fff',
+            fontSize: 14,
+            fontWeight: 500,
+            border: 'none',
+            cursor: loading ? 'not-allowed' : 'pointer',
+            opacity: loading ? 0.7 : 1,
+            marginRight: 8,
+            transition: 'background 0.2s',
+          }}
           disabled={loading}
+          onMouseOver={e => { if (!loading) e.currentTarget.style.background = '#1d4ed8' }}
+          onMouseOut={e => { if (!loading) e.currentTarget.style.background = '#2563eb' }}
         >
           {loading ? "Fetching…" : "Fetch"}
         </button>
 
+
         {/* Divider */}
-        <div className="h-6 w-px bg-border" />
+  <div style={{ height: 24, width: 1, background: '#333', margin: '0 8px' }} />
 
         {/* Frame Selector */}
         {frameOptions.length > 0 && (
           <>
-            <label className="text-xs text-muted-foreground">Reference frame</label>
+            <label style={{ fontSize: 12, color: '#9ca3af', marginRight: 8 }}>Reference frame</label>
             <select
-              className="bg-muted border border-border rounded-lg px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary transition-shadow"
+              style={{
+                borderRadius: 8,
+                padding: '6px 12px',
+                fontSize: 14,
+                backgroundColor: '#18181b',
+                color: '#fff',
+                border: '1px solid #333',
+                marginRight: 8,
+              }}
               value={selectedFrameId}
               onChange={(e) => setSelectedFrameId(e.target.value)}
               title="Choose a frame to anchor coordinates and preview overlay"
@@ -167,27 +255,52 @@ export default function Toolbar(props: {
                 </option>
               ))}
             </select>
-            <div className="h-6 w-px bg-border" />
+            <div style={{ height: 24, width: 1, background: '#333', margin: '0 8px' }} />
           </>
         )}
 
         {/* Action Buttons */}
         <button
           onClick={fitToScreen}
-          className="rounded-lg px-3 py-1.5 bg-card hover:bg-muted border border-border text-foreground text-sm font-medium transition-colors"
+          style={{
+            borderRadius: 8,
+            padding: '6px 16px',
+            background: '#23272f',
+            color: '#fff',
+            fontSize: 14,
+            fontWeight: 500,
+            border: '1px solid #444',
+            marginRight: 8,
+            cursor: 'pointer',
+            transition: 'background 0.2s',
+          }}
+          onMouseOver={e => (e.currentTarget.style.background = '#18181b')}
+          onMouseOut={e => (e.currentTarget.style.background = '#23272f')}
         >
           Fit
         </button>
-
         <button
           onClick={openConvert}
-          className="rounded-lg px-3 py-1.5 bg-card hover:bg-muted border border-border text-foreground text-sm font-medium transition-colors"
+          style={{
+            borderRadius: 8,
+            padding: '6px 16px',
+            background: '#23272f',
+            color: '#fff',
+            fontSize: 14,
+            fontWeight: 500,
+            border: '1px solid #444',
+            marginRight: 8,
+            cursor: 'pointer',
+            transition: 'background 0.2s',
+          }}
+          onMouseOver={e => (e.currentTarget.style.background = '#18181b')}
+          onMouseOut={e => (e.currentTarget.style.background = '#23272f')}
         >
           Convert
         </button>
 
         {/* Zoom Display */}
-        <div className="text-xs text-muted-foreground px-2 min-w-[70px] text-right">{zoomPct.toFixed(0)}%</div>
+  <div style={{ fontSize: 12, color: '#9ca3af', padding: '0 8px', minWidth: 70, textAlign: 'right' }}>{zoomPct.toFixed(0)}%</div>
       </motion.div>
 
       {/* File Name Row */}
@@ -198,10 +311,16 @@ export default function Toolbar(props: {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.25 }}
-            className="px-4 py-1.5 bg-muted/60 border-t border-border text-xs text-muted-foreground"
+            style={{
+              padding: '8px 16px',
+              background: '#18181b',
+              borderTop: '1px solid #333',
+              fontSize: 12,
+              color: '#9ca3af',
+            }}
           >
-            <span className="text-muted-foreground/70">File:</span>{" "}
-            <span className="text-foreground/90">{fileName}</span>
+            <span style={{ color: '#6b7280' }}>File:</span>{' '}
+            <span style={{ color: '#fff' }}>{fileName}</span>
           </motion.div>
         )}
       </AnimatePresence>

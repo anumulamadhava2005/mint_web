@@ -157,7 +157,15 @@ export default function PropertiesPanel(props: {
       initial={{ opacity: 0, x: 16 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.3, ease: "easeOut" }}
-      className="w-72 border-l border-border bg-card p-4 overflow-y-auto text-foreground"
+      style={{
+        width: '18rem',
+        borderLeft: '1px solid rgb(48,48,48)',
+        background: 'rgb(48,48,48)',
+        color: '#fff',
+        padding: '1rem',
+        overflowY: 'auto',
+        minHeight: 0
+      }}
     >
       {/* Header */}
       <div className="mb-4 pb-3 border-b border-border">

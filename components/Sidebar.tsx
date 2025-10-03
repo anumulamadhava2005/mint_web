@@ -22,9 +22,9 @@ export default function Sidebar(props: {
   return (
     <aside style={{
       width: '240px',
-      borderRight: '1px solid #2C2C2C',
-      backgroundColor: '#0D1117',
-      color: '#E6EDF3',
+      borderRight: '1px solid rgb(48,48,48)',
+      backgroundColor: 'rgb(48,48,48)',
+      color: '#fff',
       display: 'flex',
       flexDirection: 'column',
       minHeight: 0,
@@ -33,7 +33,7 @@ export default function Sidebar(props: {
       {/* Pages Section Header */}
       <div style={{
         padding: '8px 12px',
-        borderBottom: '1px solid #2C2C2C',
+        borderBottom: '1px solid #333',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between'
@@ -41,7 +41,7 @@ export default function Sidebar(props: {
         <span style={{
           fontSize: '11px',
           fontWeight: 600,
-          color: '#8B949E',
+          color: '#bbb',
           textTransform: 'uppercase',
           letterSpacing: '0.5px'
         }}>Pages</span>
@@ -60,42 +60,7 @@ export default function Sidebar(props: {
       </div>
 
       {/* Search Section */}
-      <div style={{
-        padding: '8px 12px',
-        borderBottom: '1px solid #2C2C2C'
-      }}>
-        <div style={{ position: 'relative' }}>
-          <input
-            type="text"
-            placeholder="Search layers..."
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            style={{
-              width: '100%',
-              fontSize: '12px',
-              borderRadius: '6px',
-              padding: '6px 8px',
-              backgroundColor: '#161B22',
-              color: '#E6EDF3',
-              border: '1px solid #30363D',
-              outline: 'none'
-            }}
-            onFocus={(e) => e.target.style.border = '1px solid #388BFD'}
-            onBlur={(e) => e.target.style.border = '1px solid #30363D'}
-          />
-          <span style={{
-            position: 'absolute',
-            right: '8px',
-            top: '50%',
-            transform: 'translateY(-50%)',
-            color: '#8B949E',
-            fontSize: '11px',
-            pointerEvents: 'none'
-          }}>
-            🔍
-          </span>
-        </div>
-      </div>
+      
 
       {/* Layers Heading */}
       <div style={{
