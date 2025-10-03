@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import styles from "./css/SectionDropdown.module.css";
 import { NodeInput } from "../lib/figma-types";
 
 // Helper function to find top-level sections (typically frames)
@@ -25,13 +26,16 @@ export default function SectionDropdown(props: {
   }
 
   return (
-    <div className="relative">
+    <div className={styles.wrapper}>
       <select
         value={selectedId || ""}
         onChange={(e) => setSelectedId(e.target.value)}
-        className="w-full text-left rounded-lg border px-3 py-2 text-sm appearance-none cursor-pointer hover:bg-gray-50 pr-8"
+        className={styles.select}
         style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='currentColor' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
+          backgroundColor: '#18181b',
+          color: '#fff',
+          border: '1px solid #333',
+          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='white' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
           backgroundPosition: "right 0.5rem center",
           backgroundRepeat: "no-repeat",
           backgroundSize: "1em",
@@ -44,7 +48,7 @@ export default function SectionDropdown(props: {
           </option>
         ))}
       </select>
-      <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
+      <div className={styles.chevron}>
         {/* You can use an icon here if you prefer, for example: `▼` */}
       </div>
     </div>

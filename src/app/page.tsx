@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useCallback, useMemo, useState, useEffect } from "react";
+import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import Toolbar from "../../components/ToolBar";
 import CanvasStage from "../../components/CanvasStage";
 import PropertiesPanel from "../../components/PropertiesPanel";
@@ -11,6 +11,8 @@ import { useDrawable } from "../../hooks/useDrawable";
 import { NodeInput, ReferenceFrame } from "../../lib/figma-types";
 import Sidebar from "../../components/Sidebar";
 import { Home } from "../../components/home";
+import Spinner from "../../components/Spinner";
+import styles from "./page.module.css";
 
 /** Immutable, safe updater that preserves children and only changes the target node */
 function updateNodeByIdSafe(roots: NodeInput[], id: string, mut: (n: NodeInput) => void): NodeInput[] {
@@ -28,20 +30,37 @@ function updateNodeByIdSafe(roots: NodeInput[], id: string, mut: (n: NodeInput) 
         if (nc !== c) changed = true;
         return nc;
       });
-      return changed ? { ...node, children: nextChildren } as NodeInput : node;
+      return changed ? ({ ...node, children: nextChildren } as NodeInput) : node;
     }
     return node;
   };
   return roots.map(rec);
 }
 
-export default function Page() {
+type ViewState = { scale: number; offset: { x: number; y: number }; rawRoots: NodeInput[] | null };
+
+function HomePage() {
+  async function convertFile(target: string) {
+    const nodesToSend = rawRoots ?? [];
+    try {
+      await requestConversion(
+        target.toLowerCase().replace(/\s+/g, "-"),
+        nodesToSend as any[],
+        fileName || "FigmaFile",
+        selectedFrame
+      );
+    } catch (e: any) {
+      alert(e?.message || String(e));
+    } finally {
+      setConvertOpen(false);
+    }
+  }
   const [showConverter, setShowConverter] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [rawRoots, setRawRoots] = useState<NodeInput[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectedFrameId, setSelectedFrameId] = useState<string>("");
@@ -50,6 +69,72 @@ export default function Page() {
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [convertOpen, setConvertOpen] = useState(false);
+
+  // --- History for undo/redo (track rawRoots + viewport) ---
+  const [history, setHistory] = useState<ViewState[]>([]);
+  const [redoStack, setRedoStack] = useState<ViewState[]>([]);
+  const suppressHistoryRef = useRef(false);
+
+  // Record state changes into history when not performing undo/redo
+  useEffect(() => {
+    if (suppressHistoryRef.current) {
+      // Skip capturing this change and clear the flag for next changes
+      suppressHistoryRef.current = false;
+      return;
+    }
+    setHistory((prev) => {
+      const nextState: ViewState = { scale, offset, rawRoots };
+      const last = prev[prev.length - 1];
+      if (
+        last &&
+        last.scale === nextState.scale &&
+        last.offset.x === nextState.offset.x &&
+        last.offset.y === nextState.offset.y &&
+        last.rawRoots === nextState.rawRoots
+      ) {
+        return prev; // no-op change
+      }
+      return [...prev, nextState];
+    });
+    // Any new branch invalidates redo stack
+    setRedoStack([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scale, offset, rawRoots]);
+
+  const handleZoomIn = () => setScale((s) => Math.min(10, s * 1.1));
+  const handleZoomOut = () => setScale((s) => Math.max(0.05, s / 1.1));
+  const handleZoomReset = () => setScale(1);
+
+  const handleUndo = () => {
+    setHistory((curr) => {
+      if (curr.length <= 1) return curr;
+      const prev = curr[curr.length - 2];
+      const present = curr[curr.length - 1];
+      // Prevent this state restoration from being re-captured
+      suppressHistoryRef.current = true;
+      setScale(prev.scale);
+      setOffset(prev.offset);
+      setRawRoots(prev.rawRoots);
+      // Push present onto redo stack
+      setRedoStack((r) => [present, ...r]);
+      return curr.slice(0, -1);
+    });
+  };
+
+  const handleRedo = () => {
+    setRedoStack((curr) => {
+      if (curr.length === 0) return curr;
+      const next = curr[0];
+      // Prevent this state restoration from being re-captured
+      suppressHistoryRef.current = true;
+      setScale(next.scale);
+      setOffset(next.offset);
+      setRawRoots(next.rawRoots);
+      // Move next into history and drop from redo
+      setHistory((h) => [...h, next]);
+      return curr.slice(1);
+    });
+  };
 
   const { drawableNodes, frameOptions } = useDrawable(rawRoots);
   const [fitPending, setFitPending] = useState(false);
@@ -95,16 +180,17 @@ export default function Page() {
       const data = await res.json();
       if (!data.error) {
         setUser(data);
+        setLoading(false);
         return data;
       }
-    } catch { }
+    } catch {}
+    setLoading(false);
     return null;
   }
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const justLoggedIn = params.get('logged_in');
-    
     fetchUser().then((userData) => {
       if (justLoggedIn && userData) {
         setShowConverter(true);
@@ -207,17 +293,6 @@ export default function Page() {
     URL.revokeObjectURL(url);
   }
 
-  async function convertFile(target: string) {
-    const nodesToSend = rawRoots ?? [];
-    try {
-      await requestConversion(target.toLowerCase().replace(/\s+/g, "-"), nodesToSend as any[], fileName || "FigmaFile", selectedFrame);
-    } catch (e: any) {
-      alert(e?.message || String(e));
-    } finally {
-      setConvertOpen(false);
-    }
-  }
-
   function handleImageChange(key: string, url: string) {
     setImages((prev) => {
       const next = { ...prev };
@@ -225,10 +300,6 @@ export default function Page() {
       else next[key] = url;
       return next;
     });
-  }
-
-  if (!showConverter && !rawRoots && !user) {
-    return <Home onGetStarted={() => setShowConverter(true)} />;
   }
 
   // Logout handler: clear cookies and user state
@@ -254,19 +325,15 @@ export default function Page() {
     // window.location.reload();
   }
 
+  if (!showConverter && !rawRoots && !user && !loading) {
+    return <Home onGetStarted={() => setShowConverter(true)} />;
+  }
+
   return (
-    <div className="flex flex-col h-screen w-screen bg-gray-950 text-white overflow-hidden">
+    <div className={styles.root}>
+      {loading && <Spinner />}
       {/* Toolbar - Top bar with dark theme */}
-      <div
-        className="bg-gray-900 border-b border-gray-800 flex-shrink-0"
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          zIndex: 50,
-        }}
-      >
+      <div className={styles.toolbarBar}>
         <Toolbar
           user={user}
           onConnect={() => (window.location.href = "/api/auth/login")}
@@ -281,18 +348,25 @@ export default function Page() {
           openConvert={() => setConvertOpen(true)}
           zoomPct={scale * 100}
           onLogout={handleLogout}
+          onZoomIn={handleZoomIn}
+          onZoomOut={handleZoomOut}
+          onZoomReset={handleZoomReset}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          canUndo={history.length > 1}
+          canRedo={redoStack.length > 0}
         />
       </div>
 
       {/* Error Banner */}
       {error && (
-        <div className="bg-red-900/20 border-b border-red-800/30 text-red-300 px-4 py-2 text-sm">
+        <div className={styles.error}>
           {error}
         </div>
       )}
 
-  {/* Main Content Area - 3 column layout */}
-  <div className="flex flex-1 min-h-0 overflow-hidden pt-[125px]">
+      {/* Main Content Area - 3 column layout */}
+      <div className={styles.main}>
         {/* Left Sidebar - Layers Panel */}
         <Sidebar
           rawRoots={rawRoots}
@@ -304,7 +378,7 @@ export default function Page() {
         />
 
         {/* Center Canvas */}
-        <div className="flex-1 bg-gray-900 overflow-hidden relative">
+        <div className={styles.center}>
           <CanvasStage
             rawRoots={rawRoots}
             setRawRoots={setRawRoots}
@@ -327,6 +401,7 @@ export default function Page() {
             onUpdateSelected={updateSelected}
             //images={images}
             onImageChange={(id, url) => handleImageChange(id, url)}
+            onClose={() => setSelectedIds(new Set())}
           />
         )}
       </div>
@@ -340,3 +415,5 @@ export default function Page() {
     </div>
   );
 }
+
+export default HomePage;

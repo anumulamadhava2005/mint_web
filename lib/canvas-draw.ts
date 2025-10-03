@@ -137,22 +137,21 @@ export function drawNodes(
       }
     }
 
-    // --- Border/Stroke ---
-    if (!isTextNode) {
-      if (rawNode?.stroke) {
-        ctx.strokeStyle = rawNode.stroke.color || "#3b82f6";
-        ctx.lineWidth = (rawNode.stroke.weight || 2) * scale;
-        if (rawNode.stroke.dashPattern && rawNode.stroke.dashPattern.length) {
-          ctx.setLineDash(rawNode.stroke.dashPattern.map((d: any) => d * scale));
-        } else {
-          ctx.setLineDash([]);
-        }
+  // --- Border/Stroke ---
+  if (!isTextNode) {
+    if (rawNode?.stroke) {
+      ctx.strokeStyle = rawNode.stroke.color || "#3b82f6";
+      ctx.lineWidth = (rawNode.stroke.weight || 2) * scale;
+      if (rawNode.stroke.dashPattern && rawNode.stroke.dashPattern.length) {
+        ctx.setLineDash(rawNode.stroke.dashPattern.map((d: any) => d * scale));
       } else {
-        ctx.strokeStyle = "#3b82f6";
-        ctx.lineWidth = 2;
         ctx.setLineDash([]);
       }
+    } else {
+      // If node has no stroke, don't draw a border here. Selection will be highlighted separately.
+      ctx.setLineDash([]);
     }
+  }
 
     // --- Shadow/Effects ---
     if (rawNode?.effects && rawNode.effects.length > 0) {
@@ -200,10 +199,30 @@ export function drawNodes(
           ctx.closePath();
         }
         ctx.fill();
-        ctx.stroke();
+        if (rawNode?.stroke) {
+          ctx.stroke();
+        } else {
+          // Default subtle outline for all shapes without explicit stroke
+          ctx.save();
+          ctx.strokeStyle = "rgba(0,0,0,0.6)";
+          ctx.lineWidth = 1; // screen-space hairline
+          ctx.setLineDash([]);
+          ctx.stroke();
+          ctx.restore();
+        }
       } else {
         ctx.fillRect(x, y, w, h);
-        ctx.strokeRect(x, y, w, h);
+        if (rawNode?.stroke) {
+          ctx.strokeRect(x, y, w, h);
+        } else {
+          // Default subtle outline for all shapes without explicit stroke
+          ctx.save();
+          ctx.strokeStyle = "rgba(0,0,0,0.6)";
+          ctx.lineWidth = 1; // screen-space hairline
+          ctx.setLineDash([]);
+          ctx.strokeRect(x, y, w, h);
+          ctx.restore();
+        }
       }
     }
 
@@ -216,10 +235,9 @@ export function drawNodes(
     // --- Selection outline ---
     if (selectedIds.has(n.id)) {
       ctx.lineWidth = 2;
-      ctx.strokeStyle = "#10b981";
-      ctx.setLineDash([6, 4]);
+      ctx.strokeStyle = "#2563eb"; // hyperlink-like dark blue
+      ctx.setLineDash([]); // solid outline
       ctx.strokeRect(x, y, w, h);
-      ctx.setLineDash([]);
     }
 
     // --- Text rendering ---

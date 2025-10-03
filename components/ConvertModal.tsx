@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
+import styles from "./css/ConvertModal.module.css"
 
 export default function ConvertModal(props: {
   open: boolean
@@ -36,7 +37,7 @@ export default function ConvertModal(props: {
   return (
     <AnimatePresence>
       <motion.div
-        className="fixed inset-0 z-50"
+        className={styles.overlayRoot}
         aria-labelledby="convert-modal-title"
         role="dialog"
         aria-modal="true"
@@ -45,41 +46,37 @@ export default function ConvertModal(props: {
         exit={{ opacity: 0 }}
       >
         <motion.div
-          className="absolute inset-0 bg-background/60 backdrop-blur"
+          className={styles.backdrop}
           onClick={onClose}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
         />
-        <div className="absolute inset-0 flex items-center justify-center p-4">
+        <div className={styles.center}>
           <motion.div
             ref={ref}
             tabIndex={-1}
-            className="w-full max-w-md rounded-xl bg-card shadow-lg border border-border outline-none"
+            className={styles.card}
             initial={{ y: 12, scale: 0.98, opacity: 0 }}
             animate={{ y: 0, scale: 1, opacity: 1 }}
             exit={{ y: 12, scale: 0.98, opacity: 0 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
           >
-            <div className="px-4 py-3 border-b border-border">
-              <h2 id="convert-modal-title" className="text-lg font-semibold text-foreground">
+            <div className={styles.header}>
+              <h2 id="convert-modal-title" className={styles.title}>
                 Convert
               </h2>
             </div>
 
-            <div className="p-4 space-y-3">
+            <div className={styles.content}>
               <div>
-                <div className="text-sm text-muted-foreground mb-1">Target framework</div>
-                <div className="grid gap-2">
+                <div className={styles.label}>Target framework</div>
+                <div className={styles.grid}>
                   {FRAMEWORKS.map((c) => (
                     <button
                       key={c.id}
                       onClick={() => setChoice(c.id)}
-                      className={`w-full text-left rounded-lg border px-3 py-2 transition-colors ${
-                        choice === c.id
-                          ? "border-primary ring-2 ring-primary/30 bg-primary/5"
-                          : "border-border bg-card hover:bg-muted"
-                      } text-foreground`}
+                      className={`${styles.choice} ${choice === c.id ? styles.choiceActive : ""}`}
                       aria-pressed={choice === c.id}
                     >
                       {c.label}
@@ -87,21 +84,21 @@ export default function ConvertModal(props: {
                   ))}
                 </div>
               </div>
-              <div className="text-xs text-muted-foreground">
+              <div className={styles.hint}>
                 Reference frame is chosen from the top toolbar and used during conversion.
               </div>
             </div>
 
-            <div className="px-4 py-3 border-t border-border flex items-center justify-end gap-2">
+            <div className={styles.footer}>
               <button
                 onClick={onClose}
-                className="rounded-lg px-3 py-2 text-sm border border-border bg-card hover:bg-muted text-foreground transition-colors"
+                className={`${styles.btn} ${styles.btnGhost}`}
               >
                 Cancel
               </button>
               <button
                 onClick={() => choice && onConfirm(choice)}
-                className="rounded-lg px-3 py-2 text-sm bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                className={`${styles.btn} ${styles.btnPrimary}`}
                 disabled={!choice}
               >
                 Convert

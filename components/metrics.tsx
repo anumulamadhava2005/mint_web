@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import styles from "./css/metrics.module.css"
 
 function useCounter(target: number, duration = 1200) {
   const [value, setValue] = useState(0)
@@ -24,18 +25,18 @@ export function Metrics() {
   const c = useCounter(99)
 
   return (
-    <div className="grid grid-cols-1 gap-6 rounded-xl border border-border bg-card p-6 md:grid-cols-3">
-      <div className="text-center">
-        <div className="text-3xl font-semibold tabular-nums">{a.toLocaleString()}</div>
-        <p className="text-sm text-muted-foreground">Components Generated</p>
+    <div className={styles.grid}>
+      <div className={styles.cell}>
+        <div className={styles.value}>{a.toLocaleString()}</div>
+        <p className={styles.label}>Components Generated</p>
       </div>
-      <div className="text-center">
-        <div className="text-3xl font-semibold tabular-nums">{b}x</div>
-        <p className="text-sm text-muted-foreground">Faster than Manual</p>
+      <div className={styles.cell}>
+        <div className={styles.value}>{b}x</div>
+        <p className={styles.label}>Faster than Manual</p>
       </div>
-      <div className="text-center">
-        <div className="text-3xl font-semibold tabular-nums">{c}%</div>
-        <p className="text-sm text-muted-foreground">Design Fidelity</p>
+      <div className={styles.cell}>
+        <div className={styles.value}>{c}%</div>
+        <p className={styles.label}>Design Fidelity</p>
       </div>
     </div>
   )

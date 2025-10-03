@@ -1,16 +1,18 @@
+import styles from "./css/site-footer.module.css"
+
 export function SiteFooter() {
   return (
-    <footer className="border-t border-border">
-      <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 md:px-8 py-8 text-sm text-muted-foreground md:flex-row">
+    <footer className={styles.footer}>
+      <div className={styles.inner}>
         <p>© 2025 FigmaFlow. All rights reserved.</p>
-        <nav className="flex items-center gap-6">
-          <a href="#" className="hover:text-foreground transition-colors">
+        <nav className={styles.links}>
+          <a href="#" className={styles.link}>
             Privacy Policy
           </a>
-          <a href="#" className="hover:text-foreground transition-colors">
+          <a href="#" className={styles.link}>
             Terms of Service
           </a>
-          <a href="#" className="hover:text-foreground transition-colors">
+          <a href="#" className={styles.link}>
             Documentation
           </a>
         </nav>

@@ -1,0 +1,15 @@
+.wrapper { position: relative; }
+.select {
+  width: 100%;
+  text-align: left;
+  border-radius: 0.5rem;
+  border: 1px solid #333;
+  background-color: #18181b;
+  color: #fff;
+  padding: 0.5rem 2rem 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  appearance: none;
+  cursor: pointer;
+}
+.chevron { position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%); pointer-events: none; }
+

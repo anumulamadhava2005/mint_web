@@ -2,6 +2,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
+import styles from "./css/CanvasStage.module.css"
 import type { DrawableNode, NodeInput, ReferenceFrame } from "../lib/figma-types"
 import { drawGrid, drawNodes, drawReferenceFrameOverlay } from "../lib/ccanvas-draw-bridge"
 
@@ -103,20 +104,23 @@ export default function CanvasStage(props: {
     if (!target) return
 
     const onWheel = (e: WheelEvent) => {
-      if (!(e.ctrlKey || e.metaKey)) return
-      e.preventDefault()
-      const rect = target.getBoundingClientRect()
-      const cx = e.clientX - rect.left
-      const cy = e.clientY - rect.top
-      const intensity = 0.0015
-      const dir = -e.deltaY
-      const next = Math.max(0.05, Math.min(10, scale * (1 + dir * intensity)))
-      const wx = (cx - offset.x) / scale
-      const wy = (cy - offset.y) / scale
-      const nx = cx - wx * next
-      const ny = cy - wy * next
-      setScale(next)
-      setOffset({ x: nx, y: ny })
+      // Always allow zoom with wheel (trackpad or mouse), block browser zoom
+      e.preventDefault();
+      const rect = target.getBoundingClientRect();
+      const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
+      // Clamp deltaY to avoid huge jumps (trackpad/mouse differences)
+      let delta = Math.max(-100, Math.min(100, e.deltaY));
+      // Use a stable zoom factor
+      const zoomFactor = Math.exp(-delta * 0.002);
+      let next = scale * zoomFactor;
+      next = Math.max(0.05, Math.min(10, next));
+      const wx = (cx - offset.x) / scale;
+      const wy = (cy - offset.y) / scale;
+      const nx = cx - wx * next;
+      const ny = cy - wy * next;
+      setScale(next);
+      setOffset({ x: nx, y: ny });
     }
 
     target.addEventListener("wheel", onWheel, { passive: false })
@@ -183,12 +187,12 @@ export default function CanvasStage(props: {
       if (hitId) {
         modeRef.current = "click"
         if (!isCtrl) {
+          // Prepare to drag only the newly selected item (single-select behavior)
           dragStartWorld.current = { wx, wy }
           const map = new Map<string, { x: number; y: number }>()
-          const set = new Set(selectedIds)
-          set.add(hitId)
+          const idsToMove = new Set<string>([hitId!])
           drawableNodes.forEach((n: any) => {
-            if (set.has(n.id)) map.set(n.id, { x: n.x, y: n.y })
+            if (idsToMove.has(n.id)) map.set(n.id, { x: n.x, y: n.y })
           })
           originalPositions.current = map
           dragOffsetsRef.current.clear()
@@ -211,7 +215,10 @@ export default function CanvasStage(props: {
         return
       }
 
-      // Fallback to pan if no node was hit
+      // Fallback when no node was hit: clear selection on click, allow pan on drag
+      if (!isCtrl && !isSpace) {
+        setSelectedIds(() => new Set())
+      }
       modeRef.current = "pan"
       setIsPanning(true)
       overlay.setPointerCapture(e.pointerId)
@@ -334,8 +341,10 @@ export default function CanvasStage(props: {
     ctx.fillStyle = "#ffffff"
     ctx.fillRect(0, 0, viewportSize.width, viewportSize.height)
 
-    // base grid + shapes/text
-    drawGrid(ctx, viewportSize.width, viewportSize.height, offset, scale, 100, 20)
+    // Show grid only if there are no drawable nodes (before fetch)
+    if (!drawableNodes || drawableNodes.length === 0) {
+      drawGrid(ctx, viewportSize.width, viewportSize.height, offset, scale, 100, 20)
+    }
     drawNodes(ctx, drawableNodes, offset, scale, selectedIds, dragOffsetsRef.current, rawRoots || null)
 
     // draw images OVER shapes when available
@@ -457,11 +466,11 @@ export default function CanvasStage(props: {
 
   return (
     <div
-      className="relative flex-1 bg-background"
-      style={{ width: "100%", height: "100%", overflow: "hidden", cursor: isPanning ? "grabbing" : "default" }}
+      className={styles.root}
+      style={{ cursor: isPanning ? "grabbing" : "default" }}
     >
-      <canvas ref={canvasRef} className="block absolute inset-0" />
-      <canvas ref={overlayRef} className="block absolute inset-0" />
+      <canvas ref={canvasRef} className={styles.canvasBase} />
+      <canvas ref={overlayRef} className={styles.canvasOverlay} />
     </div>
   )
 }
@@ -520,5 +529,5 @@ function useImageMap(map: ImageMap) {
     }
   }, [entries])
 
-  return state
+;  return state
 }
