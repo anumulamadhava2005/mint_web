@@ -1,7 +1,4 @@
-// Utility to join class names conditionally
-function cn(...classes: (string | undefined | false)[]) {
-  return classes.filter(Boolean).join(" ");
-}
+import styles from "./css/Spinner.module.css"
 
 type TopEndSpinnerProps = {
   show?: boolean
@@ -21,18 +18,15 @@ export default function Spinner({
   if (!show) return null;
   return (
     <div
-      className={cn(
-        "fixed inset-0 z-[1000] flex items-center justify-center bg-white",
-        className
-      )}
+      className={[styles.overlay, className].filter(Boolean).join(" ")}
       role="status"
       aria-live="polite"
       aria-atomic="true"
     >
-      <div className="flex items-center gap-2 rounded-md border bg-white px-3 py-2 shadow-sm">
+      <div className={styles.card}>
         <span
           aria-hidden="true"
-          className={cn("inline-block rounded-full animate-spin motion-reduce:animate-none")}
+          className={styles.spin}
           style={{
             width: size,
             height: size,
@@ -43,8 +37,8 @@ export default function Spinner({
             borderTopColor: "#388bfd",
           }}
         />
-        <span className="text-sm text-gray-700">{label}</span>
-        <span className="sr-only">{label}</span>
+        <span className={styles.label}>{label}</span>
+        <span className={styles.srOnly}>{label}</span>
       </div>
     </div>
   );

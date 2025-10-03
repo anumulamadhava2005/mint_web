@@ -9,6 +9,7 @@ import { GripVertical, ChevronRight, ChevronDown } from "lucide-react"
 // Use NodeInput from shared types
 import type { NodeInput } from "../lib/figma-types"
 import { motion, AnimatePresence } from "framer-motion"
+import styles from "./css/LayersPanel.module.css"
 
 interface LayersPanelProps {
   layers: NodeInput[]
@@ -38,11 +39,9 @@ const SortableLayer: React.FC<{
   const isExpanded = expandedIds.has(layer.id)
 
   return (
-    <motion.div ref={setNodeRef} style={style} layout className="flex flex-col items-center w-full">
+    <motion.div ref={setNodeRef} style={style} layout className={styles.rowWrap}>
       <div
-        className={`flex items-center gap-1 px-2 py-1.5 text-sm rounded cursor-pointer transition-colors w-full ${
-          isSelected ? "bg-primary text-primary-foreground" : "bg-card text-foreground hover:bg-muted"
-        }`}
+        className={`${styles.row} ${isSelected ? styles.rowSelected : `${styles.rowDefault} ${styles.rowHover}`}`}
         onClick={(e) => {
           e.stopPropagation()
           onSelect(layer.id)
@@ -51,9 +50,9 @@ const SortableLayer: React.FC<{
         <div
           {...attributes}
           {...listeners}
-          className="cursor-grab active:cursor-grabbing p-0.5 hover:bg-slate-600/50 rounded"
+          className={styles.dragHandle}
         >
-          <GripVertical size={14} className="text-slate-400" />
+          <GripVertical size={14} className={styles.iconMuted} />
         </div>
 
         {hasChildren && (
@@ -62,19 +61,19 @@ const SortableLayer: React.FC<{
               e.stopPropagation()
               toggleExpanded(layer.id)
             }}
-            className="p-0.5 hover:bg-slate-600/50 rounded"
+            className={styles.dragHandle}
           >
             {isExpanded ? (
-              <ChevronDown size={14} className="text-slate-400" />
+              <ChevronDown size={14} className={styles.iconMuted} />
             ) : (
-              <ChevronRight size={14} className="text-slate-400" />
+              <ChevronRight size={14} className={styles.iconMuted} />
             )}
           </button>
         )}
 
-        {!hasChildren && <div className="w-5" />}
+        {!hasChildren && <div className={styles.spacer} />}
 
-        <span className="flex-1 truncate">{layer.name || "Untitled Layer"}</span>
+        <span className={styles.name}>{layer.name || "Untitled Layer"}</span>
       </div>
 
       <AnimatePresence initial={false}>
@@ -84,7 +83,7 @@ const SortableLayer: React.FC<{
             animate={{ height: "auto", opacity: 1, scale: 1 }}
             exit={{ height: 0, opacity: 0, scale: 0.98 }}
             transition={{ duration: 0.22, ease: "easeInOut" }}
-            className="ml-6 mt-0.5 space-y-0.5 bg-black rounded-lg p-1 border border-gray-700 text-white"
+            className={styles.childrenBox}
           >
             {layer.children!.map((child) => (
               <ChildLayer
@@ -117,17 +116,15 @@ const ChildLayer: React.FC<{
   const isExpanded = expandedIds.has(layer.id)
 
   return (
-    <div className="flex flex-col items-center w-full">
+    <div className={styles.rowWrap}>
       <div
-        className={`flex items-center gap-1 px-2 py-1.5 text-sm rounded cursor-pointer w-full border ${
-          isSelected ? "bg-blue-600 text-white border-blue-400" : "bg-gray-900 text-white border-gray-700 hover:bg-gray-800"
-        }`}
+        className={`${styles.childRow} ${isSelected ? styles.childSelected : styles.childDefault}`}
         onClick={(e) => {
           e.stopPropagation()
           onSelect(layer.id)
         }}
       >
-        <div className="w-5" />
+        <div className={styles.spacer} />
 
         {hasChildren && (
           <button
@@ -135,23 +132,23 @@ const ChildLayer: React.FC<{
               e.stopPropagation()
               toggleExpanded(layer.id)
             }}
-            className="p-0.5 hover:bg-slate-600/50 rounded"
+            className={styles.dragHandle}
           >
             {isExpanded ? (
-              <ChevronDown size={14} className="text-slate-400" />
+              <ChevronDown size={14} className={styles.iconMuted} />
             ) : (
-              <ChevronRight size={14} className="text-slate-400" />
+              <ChevronRight size={14} className={styles.iconMuted} />
             )}
           </button>
         )}
 
-        {!hasChildren && <div className="w-5" />}
+        {!hasChildren && <div className={styles.spacer} />}
 
-        <span className="flex-1 truncate">{layer.name || "Untitled Layer"}</span>
+        <span className={styles.name}>{layer.name || "Untitled Layer"}</span>
       </div>
 
       {hasChildren && isExpanded && (
-  <div className="ml-6 mt-0.5 space-y-0.5 bg-black rounded-lg p-1 border border-gray-700 text-white">
+  <div className={styles.childrenBox}>
           {layer.children!.map((child) => (
             <ChildLayer
               key={child.id}
@@ -199,10 +196,10 @@ const LayersPanel: React.FC<LayersPanelProps> = ({ layers, setLayers, selectedId
   }
 
   return (
-    <div className="bg-card p-3 rounded-lg border border-border">
+    <div className={styles.panel}>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={layers} strategy={verticalListSortingStrategy}>
-          <div className="space-y-0.5">
+          <div className={styles.listSpace}>
             {layers.map((layer) => (
               <SortableLayer
                 key={layer.id}

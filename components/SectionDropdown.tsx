@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import styles from "./css/SectionDropdown.module.css";
 import { NodeInput } from "../lib/figma-types";
 
 // Helper function to find top-level sections (typically frames)
@@ -25,11 +26,11 @@ export default function SectionDropdown(props: {
   }
 
   return (
-    <div className="relative">
+    <div className={styles.wrapper}>
       <select
         value={selectedId || ""}
         onChange={(e) => setSelectedId(e.target.value)}
-        className="w-full text-left rounded-lg border px-3 py-2 text-sm appearance-none cursor-pointer pr-8"
+        className={styles.select}
         style={{
           backgroundColor: '#18181b',
           color: '#fff',
@@ -47,7 +48,7 @@ export default function SectionDropdown(props: {
           </option>
         ))}
       </select>
-      <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
+      <div className={styles.chevron}>
         {/* You can use an icon here if you prefer, for example: `▼` */}
       </div>
     </div>

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Roboto } from "next/font/google";
 import "./globals.css";
+import styles from "./layout.module.css";
 
 
 const roboto = Roboto({
@@ -20,12 +21,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full">
+    <html lang="en" className={styles.htmlFull}>
       <body
-        className={`${roboto.variable} font-sans antialiased h-full`}
+        className={`${roboto.variable} ${styles.body}`}
         style={{ fontFamily: 'var(--font-roboto), Arial, Helvetica, sans-serif' }}
       >
-        <div className="h-full">
+        <div className={styles.full}>
           {children}
         </div>
       </body>

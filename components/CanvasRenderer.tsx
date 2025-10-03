@@ -4,6 +4,7 @@ import type React from "react"
 import { useRef, useState, useEffect } from "react"
 import type { DrawableNode } from "../lib/figma-types"
 import { Box } from "./Box"
+import styles from "./css/CanvasRenderer.module.css"
 
 interface CanvasRendererProps {
   nodes: DrawableNode[]
@@ -148,11 +149,11 @@ export function CanvasRenderer({ nodes, scale, offset, setOffset, selectedIds, s
   return (
     <div
       ref={containerRef}
-      className="w-full h-full bg-background overflow-hidden relative"
+      className={styles.root}
       onClick={() => setSelectedIds(new Set())}
       style={{ cursor: isDragging ? "grabbing" : "grab" }}
     >
-      <div className="absolute inset-0">{nodes.map(renderNode)}</div>
+      <div className={styles.inner}>{nodes.map(renderNode)}</div>
     </div>
   )
 }

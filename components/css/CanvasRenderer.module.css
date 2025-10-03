@@ -1,0 +1,9 @@
+.root {
+  width: 100%;
+  height: 100%;
+  background: var(--background);
+  overflow: hidden;
+  position: relative;
+}
+.inner { position: absolute; inset: 0; }
+

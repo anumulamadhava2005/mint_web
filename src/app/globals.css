@@ -3,6 +3,12 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --primary: #4f46e5; /* indigo-600 */
+  --primary-foreground: #ffffff;
+  --border: #e5e7eb; /* gray-200 */
+  --muted-foreground: #6b7280; /* gray-500 */
+  --card: #ffffff;
+  --muted: #f3f4f6; /* gray-100 */
 }
 
 @theme inline {
@@ -15,6 +21,10 @@
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+    --border: #374151; /* gray-700 */
+    --muted-foreground: #9ca3af; /* gray-400 */
+    --card: #111827; /* gray-900 */
+    --muted: #1f2937; /* gray-800 */
   }
 }
 

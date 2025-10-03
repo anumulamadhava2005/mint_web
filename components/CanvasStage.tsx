@@ -2,6 +2,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
+import styles from "./css/CanvasStage.module.css"
 import type { DrawableNode, NodeInput, ReferenceFrame } from "../lib/figma-types"
 import { drawGrid, drawNodes, drawReferenceFrameOverlay } from "../lib/ccanvas-draw-bridge"
 
@@ -186,12 +187,12 @@ export default function CanvasStage(props: {
       if (hitId) {
         modeRef.current = "click"
         if (!isCtrl) {
+          // Prepare to drag only the newly selected item (single-select behavior)
           dragStartWorld.current = { wx, wy }
           const map = new Map<string, { x: number; y: number }>()
-          const set = new Set(selectedIds)
-          set.add(hitId)
+          const idsToMove = new Set<string>([hitId!])
           drawableNodes.forEach((n: any) => {
-            if (set.has(n.id)) map.set(n.id, { x: n.x, y: n.y })
+            if (idsToMove.has(n.id)) map.set(n.id, { x: n.x, y: n.y })
           })
           originalPositions.current = map
           dragOffsetsRef.current.clear()
@@ -214,7 +215,10 @@ export default function CanvasStage(props: {
         return
       }
 
-      // Fallback to pan if no node was hit
+      // Fallback when no node was hit: clear selection on click, allow pan on drag
+      if (!isCtrl && !isSpace) {
+        setSelectedIds(() => new Set())
+      }
       modeRef.current = "pan"
       setIsPanning(true)
       overlay.setPointerCapture(e.pointerId)
@@ -462,11 +466,11 @@ export default function CanvasStage(props: {
 
   return (
     <div
-      className="relative flex-1 bg-background"
-      style={{ width: "100%", height: "100%", overflow: "hidden", cursor: isPanning ? "grabbing" : "default" }}
+      className={styles.root}
+      style={{ cursor: isPanning ? "grabbing" : "default" }}
     >
-      <canvas ref={canvasRef} className="block absolute inset-0" />
-      <canvas ref={overlayRef} className="block absolute inset-0" />
+      <canvas ref={canvasRef} className={styles.canvasBase} />
+      <canvas ref={overlayRef} className={styles.canvasOverlay} />
     </div>
   )
 }

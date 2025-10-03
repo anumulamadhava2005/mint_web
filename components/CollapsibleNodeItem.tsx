@@ -4,6 +4,7 @@
 import { useState } from "react"
 import type { NodeInput } from "../lib/figma-types"
 import { motion, AnimatePresence } from "framer-motion"
+import styles from "./css/CollapsibleNodeItem.module.css"
 
 function CollapsibleNodeItem({
   node,
@@ -21,9 +22,7 @@ function CollapsibleNodeItem({
   return (
     <div>
       <div
-        className={`py-1 px-2 cursor-pointer rounded text-xs truncate flex items-center gap-2 transition-colors ${
-          isSelected ? "bg-primary text-primary-foreground font-medium" : "hover:bg-muted"
-        }`}
+        className={`${styles.item} ${isSelected ? styles.itemSelected : `${styles.itemDefault} ${styles.itemHover}`}`}
         onClick={(e) => onSelect(node.id, e.ctrlKey || e.metaKey)}
       >
         {hasChildren && (
@@ -32,13 +31,13 @@ function CollapsibleNodeItem({
               e.stopPropagation()
               setIsExpanded(!isExpanded)
             }}
-            className="transition-transform"
+            className={styles.twist}
             animate={{ rotate: isExpanded ? 90 : 0 }}
           >
             ▶
           </motion.span>
         )}
-        <span className="flex-1 min-w-0 text-foreground">{node.name || `[${node.type}]`}</span>
+        <span className={styles.name}>{node.name || `[${node.type}]`}</span>
       </div>
 
       <AnimatePresence initial={false}>
@@ -47,7 +46,7 @@ function CollapsibleNodeItem({
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="pl-4 border-l border-border"
+            className={styles.children}
           >
             {node.children!.map((child) => (
               <CollapsibleNodeItem key={child.id} node={child} selectedIds={selectedIds} onSelect={onSelect} />

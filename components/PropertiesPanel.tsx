@@ -6,14 +6,16 @@ import type React from "react"
 import { useRef, useState } from "react"
 import type { NodeInput } from "../lib/figma-types"
 import { motion } from "framer-motion"
+import styles from "./css/PropertiesPanel.module.css"
 
 export default function PropertiesPanel(props: {
   selectedNode: NodeInput | null
   onUpdateSelected: (mut: (n: NodeInput) => void) => void
   images?: Record<string, string> // optional: map nodeId/name -> URL (for preview sync)
   onImageChange?: (id: string, url: string) => void // optional callback to sync external caches
+  onClose?: () => void
 }) {
-  const { selectedNode, onUpdateSelected, images, onImageChange } = props
+  const { selectedNode, onUpdateSelected, images, onImageChange, onClose } = props
   const fileRef = useRef<HTMLInputElement | null>(null)
   const [localImg, setLocalImg] = useState<string | null>(null)
 
@@ -101,12 +103,12 @@ export default function PropertiesPanel(props: {
     }
 
     return (
-      <div className="space-y-2">
-        <div className="flex gap-2">
+      <div className={styles.section}>
+        <div className={styles.row}>
           <input
             type="url"
             placeholder="https://example.com/image.png"
-            className={`bg-gray-800 border rounded px-2 py-1 text-xs w-full text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 ${isValid ? "border-gray-700" : "border-red-500"}`}
+            className={styles.input}
             value={url}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
@@ -114,7 +116,7 @@ export default function PropertiesPanel(props: {
           />
           <button
             type="button"
-            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded px-2 py-1 text-xs font-medium"
+            className={`${styles.btn} ${styles.btnPrimary}`}
             disabled={!isValid}
             onClick={handleApply}
             title={isValid ? "Set image" : "URL invalid"}
@@ -123,7 +125,7 @@ export default function PropertiesPanel(props: {
           </button>
           <button
             type="button"
-            className="bg-gray-700 hover:bg-gray-600 text-gray-200 rounded px-2 py-1 text-xs"
+            className={`${styles.btn} ${styles.btnGhost}`}
             onClick={() => {
               setUrl("")
               setIsValid(true)
@@ -137,12 +139,12 @@ export default function PropertiesPanel(props: {
 
         {/* Inline URL preview box */}
         {url ? (
-          <div className="w-full h-20 border border-gray-700 rounded overflow-hidden bg-gray-800 flex items-center justify-center">
+          <div className={styles.inlinePreview}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={url || "/placeholder.svg"}
               alt="URL preview"
-              className="max-w-full max-h-full object-contain"
+              className={styles.imgContain}
               onError={() => setIsValid(false)}
               onLoad={() => setIsValid(true)}
             />
@@ -168,18 +170,37 @@ export default function PropertiesPanel(props: {
       }}
     >
       {/* Header */}
-      <div className="mb-4 pb-3 border-b border-border">
-        <div className="text-sm font-semibold text-foreground mb-1">Properties</div>
-        <div className="text-xs text-muted-foreground">{selectedNode.name || selectedNode.id}</div>
+      <div className={styles.header} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <div className={styles.title}>Properties</div>
+          <div className={styles.subtle}>{selectedNode.name || selectedNode.id}</div>
+        </div>
+        <button
+          type="button"
+          onClick={() => onClose && onClose()}
+          title="Close"
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: '#9ca3af',
+            fontSize: 16,
+            lineHeight: 1,
+            padding: 4,
+            cursor: 'pointer',
+            borderRadius: 6
+          }}
+        >
+          ×
+        </button>
       </div>
 
       {/* Size */}
-      <div className="space-y-2 mb-4">
-        <div className="text-xs font-medium text-muted-foreground mb-1">Size</div>
-        <div className="grid grid-cols-2 gap-2">
+      <div className={styles.section}>
+        <div className={styles.label}>Size</div>
+        <div className={styles.grid2}>
           <input
             type="number"
-            className="bg-muted border border-border rounded px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary transition-shadow"
+            className={`${styles.input} ${styles.number}`}
             value={selectedNode.width ?? selectedNode.absoluteBoundingBox?.width ?? 0}
             onChange={(e) => {
               const w = Number(e.target.value) || 0
@@ -191,7 +212,7 @@ export default function PropertiesPanel(props: {
           />
           <input
             type="number"
-            className="bg-muted border border-border rounded px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary transition-shadow"
+            className={`${styles.input} ${styles.number}`}
             value={selectedNode.height ?? selectedNode.absoluteBoundingBox?.height ?? 0}
             onChange={(e) => {
               const h = Number(e.target.value) || 0
@@ -205,8 +226,8 @@ export default function PropertiesPanel(props: {
       </div>
 
       {/* Image */}
-      <div className="space-y-2 mb-4">
-        <div className="text-xs font-medium text-muted-foreground mb-1">Image</div>
+      <div className={styles.section}>
+        <div className={styles.label}>Image</div>
 
         {/* URL input with preview */}
         <ImageUrlField
@@ -219,37 +240,37 @@ export default function PropertiesPanel(props: {
         />
 
         {/* File upload */}
-        <div className="flex items-center gap-2">
+        <div className={styles.row}>
           <button
             type="button"
-            className="bg-card hover:bg-muted border border-border text-foreground rounded px-3 py-1.5 text-xs font-medium transition-colors"
+            className={`${styles.btn}`}
             onClick={() => fileRef.current?.click()}
           >
             Upload File
           </button>
-          <span className="text-xs text-muted-foreground">PNG/JPG</span>
+          <span className={styles.hint}>PNG/JPG</span>
         </div>
-        <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+        <input ref={fileRef} type="file" accept="image/*" className={styles.hidden} onChange={handleFile} />
 
         {/* Final preview */}
         {currentImage && (
-          <div className="w-full h-24 border border-border rounded overflow-hidden bg-gray-800 flex items-center justify-center mt-2">
+          <div className={styles.finalPreview}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={currentImage || "/placeholder.svg"}
               alt="Preview"
-              className="max-w-full max-h-full object-contain"
+              className={styles.imgContain}
             />
           </div>
         )}
       </div>
 
       {/* Fill */}
-      <div className="space-y-2 mb-4">
-        <div className="text-xs font-medium text-muted-foreground mb-1">Fill</div>
+      <div className={styles.section}>
+        <div className={styles.label}>Fill</div>
         <input
           type="color"
-          className="w-full h-8 bg-muted border border-border rounded cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          className={styles.input}
           value={fillColor || "#ffffff"}
           disabled={hasImageFill}
           onChange={(e) =>
@@ -262,12 +283,12 @@ export default function PropertiesPanel(props: {
       </div>
 
       {/* Stroke */}
-      <div className="space-y-2 mb-4">
-        <div className="text-xs font-medium text-muted-foreground mb-1">Stroke</div>
-        <div className="grid grid-cols-3 gap-2">
+      <div className={styles.section}>
+        <div className={styles.label}>Stroke</div>
+        <div className={styles.grid3}>
           <input
             type="color"
-            className="bg-muted border border-border rounded cursor-pointer"
+            className={styles.input}
             value={selectedNode.stroke?.color || "#000000"}
             onChange={(e) =>
               onUpdateSelected((n) => {
@@ -278,7 +299,7 @@ export default function PropertiesPanel(props: {
           <input
             type="number"
             min={0}
-            className="bg-muted border border-border rounded px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+            className={styles.input}
             value={selectedNode.stroke?.weight ?? 1}
             onChange={(e) =>
               onUpdateSelected((n) => {
@@ -287,7 +308,7 @@ export default function PropertiesPanel(props: {
             }
           />
           <select
-            className="bg-muted border border-border rounded px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+            className={styles.input}
             value={selectedNode.stroke?.align || "CENTER"}
             onChange={(e) =>
               onUpdateSelected((n) => {
@@ -303,12 +324,12 @@ export default function PropertiesPanel(props: {
       </div>
 
       {/* Corners */}
-      <div className="space-y-2 mb-4">
-        <div className="text-xs font-medium text-muted-foreground mb-1">Corner radius</div>
+      <div className={styles.section}>
+        <div className={styles.label}>Corner radius</div>
         <input
           type="number"
           min={0}
-          className="bg-muted border border-border rounded px-2 py-1.5 text-xs text-foreground w-full focus:outline-none focus:ring-2 focus:ring-primary"
+          className={styles.input}
           value={selectedNode.corners?.uniform ?? 0}
           onChange={(e) =>
             onUpdateSelected((n) => {
@@ -321,10 +342,10 @@ export default function PropertiesPanel(props: {
 
       {/* Text */}
       {selectedNode.text && (
-        <div className="space-y-2 mb-4">
-          <div className="text-xs font-medium text-muted-foreground mb-1">Text</div>
+        <div className={styles.section}>
+          <div className={styles.label}>Text</div>
           <textarea
-            className="bg-muted border border-border rounded px-2 py-1.5 text-xs text-foreground w-full focus:outline-none focus:ring-2 focus:ring-primary"
+            className={`${styles.textarea}`}
             rows={3}
             value={selectedNode.text.characters || ""}
             onChange={(e) =>
@@ -333,11 +354,11 @@ export default function PropertiesPanel(props: {
               })
             }
           />
-          <div className="grid grid-cols-2 gap-2">
+          <div className={styles.grid2}>
             <input
               type="number"
               min={1}
-              className="bg-muted border border-border rounded px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+              className={styles.input}
               value={selectedNode.text.fontSize ?? 12}
               onChange={(e) =>
                 onUpdateSelected((n) => {
@@ -347,7 +368,7 @@ export default function PropertiesPanel(props: {
             />
             <input
               type="text"
-              className="bg-muted border border-border rounded px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+              className={styles.input}
               placeholder="Font family"
               value={selectedNode.text.fontFamily || "system-ui"}
               onChange={(e) =>
@@ -357,10 +378,10 @@ export default function PropertiesPanel(props: {
               }
             />
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className={styles.grid2}>
             <input
               type="color"
-              className="bg-muted border border-border rounded cursor-pointer"
+              className={styles.input}
               value={selectedNode.text.color || "#333333"}
               onChange={(e) =>
                 onUpdateSelected((n) => {
@@ -372,7 +393,7 @@ export default function PropertiesPanel(props: {
               type="number"
               min={0}
               step={0.1}
-              className="bg-muted border border-border rounded px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+              className={styles.input}
               placeholder="Line height"
               value={selectedNode.text.lineHeight ?? ""}
               onChange={(e) =>
@@ -387,11 +408,11 @@ export default function PropertiesPanel(props: {
       )}
 
       {/* Shadow */}
-      <div className="space-y-2 mb-2">
-        <div className="text-xs font-medium text-muted-foreground mb-1">Shadow</div>
+      <div className={styles.section}>
+        <div className={styles.label}>Shadow</div>
         <input
           type="text"
-          className="bg-muted border border-border rounded px-2 py-1.5 text-xs text-foreground w-full focus:outline-none focus:ring-2 focus:ring-primary"
+          className={styles.input}
           placeholder="e.g. 0px 4px 10px rgba(0,0,0,0.15)"
           value={selectedNode.effects?.find((e) => e?.boxShadow)?.boxShadow || ""}
           onChange={(e) =>
