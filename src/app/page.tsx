@@ -231,36 +231,44 @@ function HomePage() {
         setError(errorMessage);
         setRawRoots(null);
         setFileName(null);
+        setLastFileKey(null);
         return;
       }
       const data = await res.json();
       let roots: NodeInput[] | null = null;
       let fName: string | null = null;
+      let fileKey: string | null = null;
 
       if ("extracted" in data && Array.isArray(data.extracted)) {
         roots = data.extracted as NodeInput[];
         if ((data as any).raw?.name) fName = (data as any).raw.name;
         else if ((data as any).raw?.document?.name) fName = (data as any).raw.document.name;
+        if ((data as any).raw?.key) fileKey = (data as any).raw.key;
       } else if ("frames" in data && Array.isArray(data.frames)) {
         roots = data.frames as NodeInput[];
         fName = (data as any).fileName ?? null;
+        fileKey = (data as any).fileKey ?? null;
       } else if ("document" in data && (data as any).document && Array.isArray((data as any).document.children)) {
         roots = (data as any).document.children as NodeInput[];
         fName = (data as any).fileName ?? null;
+        fileKey = (data as any).fileKey ?? null;
       }
 
       if (!roots || roots.length === 0) {
         setError("No nodes found. Check that your API returns frames, document.children, or extracted nodes.");
         setRawRoots(null);
+        setLastFileKey(null);
       } else {
         setRawRoots(roots);
         setSelectedIds(new Set());
         setFitPending(true); // trigger auto-fit after render
+        setLastFileKey(fileKey ?? key);
   // setToolbarHidden(true); // Toolbar always visible
       }
       setFileName(fName);
     } catch (e: any) {
       setError(String(e?.message ?? e));
+      setLastFileKey(null);
     } finally {
       setLoading(false);
     }
@@ -315,15 +323,206 @@ function HomePage() {
     setFileName(null);
     setRawRoots(null);
     setError(null);
-    setSelectedIds(new Set());
-    setSelectedFrameId("");
-    setImages({});
-    setScale(1);
-    setOffset({ x: 0, y: 0 });
-    setConvertOpen(false);
-    // Optionally, force reload to clear any cached state
-    // window.location.reload();
+  setSelectedIds(new Set());
+  setSelectedFrameId("");
+}
+
+// Track the last loaded file key for use in commitLive
+const [lastFileKey, setLastFileKey] = useState<string | null>(null);
+
+// NEW: success modal state for commitLive
+const [commitSuccess, setCommitSuccess] = useState(false);
+const [commitMessage, setCommitMessage] = useState<string | null>(null);
+
+// helpers: flatten tree, rect ops, synthetic root and spatial nesting
+function flattenNodes(nodes: any[], out: any[] = []) {
+	(nodes || []).forEach((n) => {
+		out.push(n);
+		if (Array.isArray(n.children) && n.children.length) flattenNodes(n.children, out);
+	});
+	return out;
+}
+
+function rectOverlaps(a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }) {
+	const ax1 = a.x, ay1 = a.y, ax2 = a.x + (a.w || 0);
+	const ay2 = a.y + (a.h || 0);
+	const bx1 = b.x, by1 = b.y, bx2 = b.x + (b.w || 0);
+	const by2 = b.y + (b.h || 0);
+	return !(bx1 >= ax2 || bx2 <= ax1 || by1 >= ay2 || by2 <= ay1);
+}
+
+function rectContains(outer: { x: number; y: number; w: number; h: number }, inner: { x: number; y: number; w: number; h: number }) {
+	return (inner.x >= outer.x && inner.y >= outer.y && (inner.x + (inner.w || 0)) <= (outer.x + (outer.w || 0)) && (inner.y + (inner.h || 0)) <= (outer.y + (outer.h || 0)));
+}
+
+function makeSyntheticRootFromRef(ref: ReferenceFrame): any {
+  return {
+    id: `__ref__${ref.id}`,
+    name: ref.id ?? "ref",
+    type: "FRAME",
+    ax: ref.x ?? 0,
+    ay: ref.y ?? 0,
+    x: 0,
+    y: 0,
+    w: Math.round(ref.width ?? 0),
+    h: Math.round(ref.height ?? 0),
+    textRaw: "",
+    fill: null,
+    stroke: null,
+    corners: { uniform: null, topLeft: null, topRight: null, bottomRight: null, bottomLeft: null },
+    effects: [],
+    text: null,
+    children: [] as any[],
+  };
+}
+
+// Rebuild subtree for a top-level node, but only include children that are inside the 'insideSet'.
+// Also convert local coordinates for synthetic root: child.x = Math.round(child.ax - ref.x)
+function rebuildSubtree(node: any, insideSet: Set<string>, ref: ReferenceFrame): any {
+	const clone = JSON.parse(JSON.stringify(node));
+	// preserve ax/ay and w/h; set local x/y relative to ref
+	clone.x = Math.round((node.ax ?? node.x ?? 0) - (ref.x ?? 0));
+	clone.y = Math.round((node.ay ?? node.y ?? 0) - (ref.y ?? 0));
+	clone.w = Math.round(node.w ?? node.width ?? 0);
+	clone.h = Math.round(node.h ?? node.height ?? 0);
+	clone.width = clone.width ?? clone.w;
+	clone.height = clone.height ?? clone.h;
+	if (Array.isArray(node.children) && node.children.length) {
+		clone.children = node.children
+			.filter((c: any) => insideSet.has(String(c.id)))
+			.map((c: any) => rebuildSubtree(c, insideSet, ref));
+	} else {
+		clone.children = [];
+	}
+	return clone;
+}
+
+async function commitLive() {
+  try {
+    if (!lastFileKey) {
+      alert("Open a Figma file first so the fileKey is known.");
+      return;
+    }
+
+    const normalizedKey = extractFileKey(lastFileKey) ?? lastFileKey;
+
+    // Derive ref size from the selected frame if present, else from drawable bounds
+    const refW = selectedFrame?.width ??
+      Math.max(1, ...drawableNodes.map(n => n.x + n.width)) - Math.min(0, ...drawableNodes.map(n => n.x));
+    const refH = selectedFrame?.height ??
+      Math.max(1, ...drawableNodes.map(n => n.y + n.height)) - Math.min(0, ...drawableNodes.map(n => n.y));
+
+    // Prefer sending rawRoots (the authoritative tree) if available, fall back to drawableNodes
+    const sourceNodes = rawRoots ?? [];
+
+    // Compute roots the same way the converter does
+    let computedRoots: any[] = [];
+    if (selectedFrame) {
+      const ref = selectedFrame;
+      // Try to find the frame node in the original tree by id
+      const refNode = sourceNodes && findNodeById(sourceNodes, ref.id);
+      if (refNode && Array.isArray(refNode.children) && refNode.children.length > 0) {
+        // If the reference frame is an existing node with children, use it directly
+        computedRoots = [refNode];
+      } else {
+        // Build synthetic root and include any nodes whose absolute rect overlaps the reference frame
+        const syntheticRoot = makeSyntheticRootFromRef(ref);
+        const all = flattenNodes(sourceNodes);
+        // build map of node id => node for preserving subtree links
+        const allById = new Map<string, any>();
+        all.forEach((n) => { if (n && n.id) allById.set(String(n.id), n); });
+
+        const inside = all.filter((n) => {
+          const nodeRect = { x: Number(n.ax ?? n.x ?? 0), y: Number(n.ay ?? n.y ?? 0), w: Number(n.w ?? n.width ?? 0), h: Number(n.h ?? n.height ?? 0) };
+          const refRect = { x: Number(ref.x ?? 0), y: Number(ref.y ?? 0), w: Number(ref.width ?? 0), h: Number(ref.height ?? 0) };
+          return rectOverlaps(refRect, nodeRect);
+        });
+
+        const insideSet = new Set(inside.map((n) => String(n.id)));
+
+        // Choose top-level inside nodes (those not contained by another inside node)
+        const topLevel = inside.filter((n) => {
+          return !inside.some((p) => p !== n && rectContains({ x: p.ax ?? p.x ?? 0, y: p.ay ?? p.y ?? 0, w: p.w ?? p.width ?? 0, h: p.h ?? p.height ?? 0 },
+                                                               { x: n.ax ?? n.x ?? 0, y: n.ay ?? n.y ?? 0, w: n.w ?? n.width ?? 0, h: n.h ?? n.height ?? 0 }));
+        });
+
+        // Rebuild top-level subtrees relative to synthetic root
+        syntheticRoot.children = topLevel.map((t) => rebuildSubtree(t, insideSet, ref));
+        computedRoots = [syntheticRoot];
+      }
+    } else {
+      computedRoots = sourceNodes;
+    }
+
+    // Optionally do any post-processing comparable to wrapOverflowAsHorizontal in the converter.
+    // Minimal compatibility: no-op here, but preserved hook location for parity.
+    // if (selectedFrame && computedRoots.length === 1) {
+//       wrapOverflowAsHorizontal(computedRoots[0], selectedFrame);
+//    }
+
+    const payloadRoots = computedRoots;
+
+    const payload = {
+      fileKey: normalizedKey,
+      // send the full node tree so the server can persist the exact changes
+      roots: payloadRoots,
+      refW: Math.round(refW),
+      refH: Math.round(refH),
+      // helpful metadata for server to rebuild manifests / cache
+      fileName: fileName ?? undefined,
+      images, // image refs currently in the editor
+      referenceFrame: selectedFrame ?? null,
+      forcePublish: true,
+      cacheBuster: Date.now(),
+    };
+
+    const res = await fetch("/api/live/publish", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (res.status === 401) {
+      window.location.href = "/api/auth/login"; // ensure OAuth session, then retry
+      return;
+    }
+    if (!res.ok) {
+      // surface server error text if present
+      const errText = await res.text();
+      throw new Error(errText || "Publish failed");
+    }
+
+    // Try to extract a friendly message from the response
+    let msg = "Published successfully";
+    try {
+      const text = await res.text();
+      if (text) {
+        try {
+          const j = JSON.parse(text);
+          if (j?.message) msg = j.message;
+          else if (typeof text === "string" && text.trim()) msg = text;
+        } catch {
+          msg = text;
+        }
+      }
+    } catch {
+      /* ignore parsing errors */
+    }
+
+    // Indicate success to the user via modal
+    setCommitMessage(msg);
+    setCommitSuccess(true);
+    // No UI change needed otherwise: the running app at :3002 receives SSE "version" and refreshes
+  } catch (e: any) {
+    alert(e?.message || String(e));
   }
+}
+
+// Auto-close the success modal after a short delay
+useEffect(() => {
+  if (!commitSuccess) return;
+  const t = setTimeout(() => setCommitSuccess(false), 3000);
+  return () => clearTimeout(t);
+}, [commitSuccess]);
 
   if (!showConverter && !rawRoots && !user && !loading) {
     return <Home onGetStarted={() => setShowConverter(true)} />;
@@ -355,6 +554,7 @@ function HomePage() {
           onRedo={handleRedo}
           canUndo={history.length > 1}
           canRedo={redoStack.length > 0}
+          onCommit={commitLive}
         />
       </div>
 
@@ -412,8 +612,69 @@ function HomePage() {
         onClose={() => setConvertOpen(false)} 
         onConfirm={(val) => convertFile(val)} 
       />
+
+      {/* Success Modal (inline, lightweight) */}
+      {commitSuccess && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "rgba(0,0,0,0.35)",
+            zIndex: 2000,
+          }}
+          onClick={() => setCommitSuccess(false)}
+        >
+          <div
+            style={{
+              minWidth: 260,
+              maxWidth: "80%",
+              padding: 16,
+              borderRadius: 8,
+              background: "white",
+              boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ marginBottom: 12, fontWeight: 600 }}>{commitMessage ?? "Success"}</div>
+            <div style={{ fontSize: 13, color: "#444", marginBottom: 12 }}>Your changes were published.</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => setCommitSuccess(false)}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: 6,
+                  border: "1px solid #ddd",
+                  background: "#fff",
+                  cursor: "pointer",
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 export default HomePage;
+function extractFileKey(lastFileKey: string) {
+  // Handles both raw file keys and Figma URLs
+  // Figma file key is a 22-character alphanumeric string (sometimes 20-22)
+  // Example URL: https://www.figma.com/file/AbCdEfGhIjKlMnOpQrStUv/My-File?node-id=123%3A456
+  const urlMatch = lastFileKey.match(/figma\.com\/file\/([a-zA-Z0-9]{20,})/);
+  if (urlMatch) return urlMatch[1];
+  // If it's just a key, return as is
+  if (/^[a-zA-Z0-9]{20,}$/.test(lastFileKey)) return lastFileKey;
+  return null;
+}
+

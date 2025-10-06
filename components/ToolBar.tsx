@@ -29,6 +29,7 @@ export default function Toolbar(props: {
   onRedo: () => void
   canUndo: boolean
   canRedo: boolean
+  onCommit: () => void
 }) {
   const {
     user,
@@ -43,6 +44,7 @@ export default function Toolbar(props: {
     fitToScreen,
     openConvert,
     zoomPct,
+    onCommit
   } = props
 
   const [fileInputVal, setFileInputVal] = useState("")
@@ -51,7 +53,7 @@ export default function Toolbar(props: {
   if (typeof window !== "undefined") {
     // run once
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ;(window as any).__userFetched__ ||= (onMountFetchUser(), true)
+    ; (window as any).__userFetched__ ||= (onMountFetchUser(), true)
   }
 
   function handleFetch() {
@@ -157,7 +159,7 @@ export default function Toolbar(props: {
 
 
         {/* Divider */}
-  <div style={{ height: 24, width: 1, background: '#333', margin: '0 8px' }} />
+        <div style={{ height: 24, width: 1, background: '#333', margin: '0 8px' }} />
 
         {/* Frame Selector */}
         {frameOptions.length > 0 && (
@@ -226,6 +228,15 @@ export default function Toolbar(props: {
           onMouseOut={e => (e.currentTarget.style.background = '#23272f')}
         >
           Convert
+        </button>
+
+
+        <button
+          className="px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-500 text-white"
+          onClick={() => onCommit?.()}
+          title="Publish snapshot for live preview"
+        >
+          Commit
         </button>
 
         {/* Profile next to Convert */}
@@ -312,7 +323,7 @@ export default function Toolbar(props: {
         </div>
 
         {/* Zoom Display */}
-  
+
       </motion.div>
 
       {/* File Name Row */}
