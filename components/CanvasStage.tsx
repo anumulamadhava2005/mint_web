@@ -7,7 +7,7 @@ import type { DrawableNode, NodeInput, ReferenceFrame } from "../lib/figma-types
 import { drawGrid, drawNodes, drawReferenceFrameOverlay } from "../lib/ccanvas-draw-bridge"
 
 type ImageLike = HTMLImageElement | string
-type ImageMap = Record<string, ImageLike> // keyed by node.id or node.name
+type ImageMap = Record<string, ImageLike>
 
 export default function CanvasStage(props: {
   rawRoots: NodeInput[] | null
@@ -20,7 +20,7 @@ export default function CanvasStage(props: {
   offset: { x: number; y: number }
   setOffset: (v: { x: number; y: number }) => void
   selectedFrame: ReferenceFrame | null
-  images?: ImageMap // NEW: map node id/name -> URL or HTMLImageElement
+  images?: ImageMap
 }) {
   const {
     rawRoots,
@@ -36,12 +36,10 @@ export default function CanvasStage(props: {
     images = {},
   }: any = props
 
-  // overlay and base canvas
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const overlayRef = useRef<HTMLCanvasElement | null>(null)
   const [viewportSize, setViewportSize] = useState({ width: 1280, height: 800 })
 
-  // interaction state
   const keysRef = useRef({ ctrl: false, meta: false, shift: false, space: false })
   type Mode = "idle" | "pan" | "marquee" | "drag" | "click"
   const modeRef = useRef<Mode>("idle")
@@ -55,14 +53,10 @@ export default function CanvasStage(props: {
   const originalPositions = useRef<Map<string, { x: number; y: number }>>(new Map())
   const dragOffsetsRef = useRef<Map<string, { dx: number; dy: number }>>(new Map())
   const [tick, setTick] = useState(0)
-  const rerender = () => setTick((t) => (t + 1) & 0xffff)
 
-  const GRID_MAJOR = 100
-  const GRID_MINOR = 20
   const SNAP = 10
   const CLICK_DRAG_SLOP = 4
 
-  // layout
   useEffect(() => {
     const update = () => setViewportSize({ width: window.innerWidth, height: window.innerHeight })
     update()
@@ -70,7 +64,6 @@ export default function CanvasStage(props: {
     return () => window.removeEventListener("resize", update)
   }, [])
 
-  // key handlers
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Control") keysRef.current.ctrl = true
@@ -78,6 +71,11 @@ export default function CanvasStage(props: {
       if (e.key === "Shift") keysRef.current.shift = true
       if (e.key === " ") {
         keysRef.current.space = true
+        // Only prevent default if not typing in an input/textarea
+        const target = e.target as HTMLElement
+        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
+          return // Allow normal space behavior in text inputs
+        }
         e.preventDefault()
       }
     }
@@ -87,6 +85,11 @@ export default function CanvasStage(props: {
       if (e.key === "Shift") keysRef.current.shift = false
       if (e.key === " ") {
         keysRef.current.space = false
+        // Only prevent default if not typing in an input/textarea
+        const target = e.target as HTMLElement
+        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
+          return // Allow normal space behavior in text inputs
+        }
         e.preventDefault()
       }
     }
@@ -98,39 +101,53 @@ export default function CanvasStage(props: {
     }
   }, [])
 
-  // wheel zoom with Ctrl/Meta
   useEffect(() => {
     const target = overlayRef.current || canvasRef.current
     if (!target) return
 
     const onWheel = (e: WheelEvent) => {
-      // Always allow zoom with wheel (trackpad or mouse), block browser zoom
-      e.preventDefault();
-      const rect = target.getBoundingClientRect();
-      const cx = e.clientX - rect.left;
-      const cy = e.clientY - rect.top;
-      // Clamp deltaY to avoid huge jumps (trackpad/mouse differences)
-      let delta = Math.max(-100, Math.min(100, e.deltaY));
-      // Use a stable zoom factor
-      const zoomFactor = Math.exp(-delta * 0.002);
-      let next = scale * zoomFactor;
-      next = Math.max(0.05, Math.min(10, next));
-      const wx = (cx - offset.x) / scale;
-      const wy = (cy - offset.y) / scale;
-      const nx = cx - wx * next;
-      const ny = cy - wy * next;
-      setScale(next);
-      setOffset({ x: nx, y: ny });
+      e.preventDefault()
+      const rect = target.getBoundingClientRect()
+      const cx = e.clientX - rect.left
+      const cy = e.clientY - rect.top
+      let delta = Math.max(-100, Math.min(100, e.deltaY))
+      const zoomFactor = Math.exp(-delta * 0.002)
+      let next = scale * zoomFactor
+      next = Math.max(0.05, Math.min(10, next))
+      const wx = (cx - offset.x) / scale
+      const wy = (cy - offset.y) / scale
+      const nx = cx - wx * next
+      const ny = cy - wy * next
+      setScale(next)
+      setOffset({ x: nx, y: ny })
     }
 
     target.addEventListener("wheel", onWheel, { passive: false })
     return () => target.removeEventListener("wheel", onWheel)
   }, [scale, offset, setScale, setOffset])
 
-  // Preload any string URLs in images into HTMLImageElement instances
-  const loadedImages = useImageMap(images)
+  const mergedImages = useMemo(() => {
+    const out: ImageMap = { ...(images || {}) }
+    if (rawRoots && Array.isArray(rawRoots)) {
+      const walk = (node: any) => {
+        if (node?.fill?.type === "IMAGE" && typeof node.fill.imageRef === "string") {
+          let imageUrl = node.fill.imageRef
+          // Proxy external URLs to avoid CORS
+          if (imageUrl.startsWith('http') && !imageUrl.includes(window.location.hostname)) {
+            imageUrl = `/api/image-proxy?url=${encodeURIComponent(imageUrl)}`
+          }
+          out[node.id] = imageUrl
+          if (node.name) out[node.name] = imageUrl
+        }
+        node.children?.forEach((c: any) => walk(c))
+      }
+      rawRoots.forEach((r: any) => walk(r))
+    }
+    return out
+  }, [images, rawRoots, tick])
 
-  // pointer interactions (unchanged) ...
+  const loadedImages = useImageMap(mergedImages)
+
   useEffect(() => {
     const canvas = canvasRef.current
     const overlay = overlayRef.current
@@ -167,7 +184,6 @@ export default function CanvasStage(props: {
       const isCtrl = e.ctrlKey || e.metaKey
       const isSpace = keysRef.current.space
 
-      // If space is held, always pan (Figma-like)
       if (isSpace) {
         modeRef.current = "pan"
         setIsPanning(true)
@@ -187,7 +203,6 @@ export default function CanvasStage(props: {
       if (hitId) {
         modeRef.current = "click"
         if (!isCtrl) {
-          // Prepare to drag only the newly selected item (single-select behavior)
           dragStartWorld.current = { wx, wy }
           const map = new Map<string, { x: number; y: number }>()
           const idsToMove = new Set<string>([hitId!])
@@ -215,7 +230,6 @@ export default function CanvasStage(props: {
         return
       }
 
-      // Fallback when no node was hit: clear selection on click, allow pan on drag
       if (!isCtrl && !isSpace) {
         setSelectedIds(() => new Set())
       }
@@ -320,7 +334,6 @@ export default function CanvasStage(props: {
     }
   }, [drawableNodes, offset, scale, rawRoots, setOffset, setRawRoots, setSelectedIds])
 
-  // render pass
   useEffect(() => {
     const canvas = canvasRef.current
     const overlay = overlayRef.current
@@ -341,85 +354,95 @@ export default function CanvasStage(props: {
     ctx.fillStyle = "#ffffff"
     ctx.fillRect(0, 0, viewportSize.width, viewportSize.height)
 
-    // Show grid only if there are no drawable nodes (before fetch)
     if (!drawableNodes || drawableNodes.length === 0) {
       drawGrid(ctx, viewportSize.width, viewportSize.height, offset, scale, 100, 20)
     }
+    
     drawNodes(ctx, drawableNodes, offset, scale, selectedIds, dragOffsetsRef.current, rawRoots || null)
 
-    // draw images OVER shapes when available
-    const FIT_MODE = "cover" as "cover" | "contain" | "stretch"
-
     for (const n of drawableNodes) {
-      const key = images[n.id] ? n.id : n.name // prefer id
-      const asset = loadedImages[key]
-      const img = asset as HTMLImageElement | undefined
+      let nodeData: any = null
+      let fillProps: any = null
+      
+      if (rawRoots) {
+        const findNode = (node: any): any => {
+          if (node.id === n.id) return node
+          if (node.children) {
+            for (const child of node.children) {
+              const found = findNode(child)
+              if (found) return found
+            }
+          }
+          return null
+        }
+        
+        for (const root of rawRoots) {
+          const found = findNode(root)
+          if (found) {
+            nodeData = found
+            fillProps = found.fill
+            break
+          }
+        }
+      }
 
+      if (!fillProps || fillProps.type !== "IMAGE") continue
+
+      const img = loadedImages[n.id] || loadedImages[n.name]
       if (!img || !img.complete || !img.naturalWidth || !img.naturalHeight) continue
+
+      const fitMode = fillProps?.fit || "cover"
+      const opacity = fillProps?.opacity !== undefined ? fillProps.opacity : 1
 
       const x = offset.x + n.x * scale
       const y = offset.y + n.y * scale
       const w = Math.max(0.5, n.width * scale)
       const h = Math.max(0.5, n.height * scale)
 
-      // Compute draw rect based on fit mode
-      let dx = x,
-        dy = y,
-        dw = w,
-        dh = h
-      if (FIT_MODE !== "stretch") {
+      let dx = x, dy = y, dw = w, dh = h
+
+      if (fitMode === "cover") {
         const ir = img.naturalWidth / img.naturalHeight
         const br = w / h
-        if (FIT_MODE === "cover") {
-          // fill box entirely, possibly cropping
-          if (ir > br) {
-            // image wider -> match height
-            dh = h
-            dw = h * ir
-            dx = x + (w - dw) / 2
-            dy = y
-          } else {
-            // image taller -> match width
-            dw = w
-            dh = w / ir
-            dx = x
-            dy = y + (h - dh) / 2
-          }
-        } else if (FIT_MODE === "contain") {
-          // letterbox inside box
-          if (ir > br) {
-            dw = w
-            dh = w / ir
-            dx = x
-            dy = y + (h - dh) / 2
-          } else {
-            dh = h
-            dw = h * ir
-            dx = x + (w - dw) / 2
-            dy = y
-          }
+        if (ir > br) {
+          dh = h
+          dw = h * ir
+          dx = x + (w - dw) / 2
+          dy = y
+        } else {
+          dw = w
+          dh = w / ir
+          dx = x
+          dy = y + (h - dh) / 2
+        }
+      } else if (fitMode === "contain") {
+        const ir = img.naturalWidth / img.naturalHeight
+        const br = w / h
+        if (ir > br) {
+          dw = w
+          dh = w / ir
+          dx = x
+          dy = y + (h - dh) / 2
+        } else {
+          dh = h
+          dw = h * ir
+          dx = x + (w - dw) / 2
+          dy = y
         }
       }
 
-      // Optional: clip to rounded corners if node has radius
-      const radius =
-        (rawRoots &&
-          (rawRoots.find((r: any) => r.id === n.id)?.corners?.uniform ??
-            rawRoots?.find((r: any) => r.id === n.id)?.corners?.topLeft ??
-            rawRoots?.find((r: any) => r.id === n.id)?.corners?.topRight ??
-            rawRoots?.find((r: any) => r.id === n.id)?.corners?.bottomRight ??
-            rawRoots?.find((r: any) => r.id === n.id)?.corners?.bottomLeft)) ||
-        0
+      const radius = nodeData?.corners?.uniform || 0
 
       try {
+        ctx.save()
+        ctx.globalAlpha = opacity
+
         if (radius && radius > 0) {
           const r = Math.min(radius * scale, Math.min(w, h) / 2)
-          ctx.save()
           ctx.beginPath()
           if ((ctx as any).roundRect) {
-            ;(ctx as any).roundRect(x, y, w, h, r)
+            (ctx as any).roundRect(x, y, w, h, r)
           } else {
-            // simple rounded rect path
             ctx.moveTo(x + r, y)
             ctx.arcTo(x + w, y, x + w, y + h, r)
             ctx.arcTo(x + w, y + h, x, y + h, r)
@@ -428,19 +451,16 @@ export default function CanvasStage(props: {
             ctx.closePath()
           }
           ctx.clip()
-          ctx.drawImage(img, dx, dy, dw, dh)
-          ctx.restore()
-        } else {
-          ctx.drawImage(img, dx, dy, dw, dh)
         }
-      } catch {
-        // If CORS taints canvas or other draw errors, skip drawing this image
-        // Ensure images are loaded with img.crossOrigin="anonymous" and proper ACAO headers. [2]
+
+        ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, dx, dy, dw, dh)
+        ctx.restore()
+      } catch (err) {
+        ctx.restore()
         continue
       }
     }
 
-    // overlay pass
     octx.setTransform(dpr, 0, 0, dpr, 0, 0)
     octx.clearRect(0, 0, viewportSize.width, viewportSize.height)
 
@@ -465,20 +485,22 @@ export default function CanvasStage(props: {
   }, [drawableNodes, viewportSize, offset, scale, selectedIds, isMarquee, tick, rawRoots, selectedFrame, loadedImages])
 
   return (
-    <div
-      className={styles.root}
-      style={{ cursor: isPanning ? "grabbing" : "default" }}
-    >
+    <div className={styles.root} style={{ cursor: isPanning ? "grabbing" : "default" }}>
       <canvas ref={canvasRef} className={styles.canvasBase} />
       <canvas ref={overlayRef} className={styles.canvasOverlay} />
     </div>
   )
 }
 
-/* Preload helper: convert string URLs to HTMLImageElement and memoize readiness */
 function useImageMap(map: ImageMap) {
   const [state, setState] = useState<Record<string, HTMLImageElement>>({})
-  const entries = useMemo(() => Object.entries(map), [map])
+
+  // Build a lightweight key that changes when any src changes (handles HTMLImageElement or string)
+  const mapKey = useMemo(() =>
+    Object.entries(map)
+      .map(([k, v]) => `${k}:${typeof v === "string" ? v : (v && (v as HTMLImageElement).src) ?? ""}`)
+      .join("|"),
+  [map])
 
   useEffect(() => {
     let alive = true
@@ -489,6 +511,7 @@ function useImageMap(map: ImageMap) {
       if (alive) setState({ ...next })
     }
 
+    const entries = Object.entries(map)
     entries.forEach(([key, val]) => {
       if (typeof val !== "string") {
         const img = val as HTMLImageElement
@@ -507,27 +530,36 @@ function useImageMap(map: ImageMap) {
         }
         return
       }
+
       const src = val as string
+      // Reuse an existing loaded image with same src if present to avoid unnecessary reloads
+      const existing = Object.values(state).find((i) => i.src === src)
+      if (existing && existing.complete) {
+        next[key] = existing
+        return
+      }
+
       const img = new Image()
       pending++
-      // CORS must be set BEFORE src to avoid tainting and to allow drawing at all
-      img.crossOrigin = "anonymous" // server must send ACAO, or use same-origin/proxy [2]
+      // try to avoid tainting canvas when possible
+      try {
+        img.crossOrigin = "anonymous"
+      } catch {}
       img.onload = () => {
         next[key] = img
         if (--pending === 0) finish()
       }
       img.onerror = () => {
-        console.warn("Image failed to load:", src)
         if (--pending === 0) finish()
       }
-      img.src = src // set last [1]
+      img.src = src
     })
 
     if (pending === 0) finish()
     return () => {
       alive = false
     }
-  }, [entries])
+  }, [mapKey])
 
-;  return state
+  return state
 }

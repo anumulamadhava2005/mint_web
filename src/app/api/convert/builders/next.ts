@@ -242,12 +242,20 @@ export function LiveTree({ nodes, manifest }:{ nodes:any[]; manifest:Record<stri
     if (n.children?.length){
       const wrapStyle = cssFromNode(n);
       const bg = kind==="IMAGE" && n.fill?.imageRef
-        ? <Img key={\`\${n.id}-bg\`} style={{ position:"absolute", left:0, top:0, width:"100%", height:"100%", objectFit:"cover", borderRadius: wrapStyle.borderRadius as any }} src={manifest[n.fill.imageRef]||""} />
+        ? (() => {
+            // Respect the fill's fit mode: cover (default), contain, fill
+            const fitMode = n.fill?.fit || "cover";
+            const objectFit = fitMode === "fill" ? "fill" : fitMode === "contain" ? "contain" : "cover";
+            return <Img key={\`\${n.id}-bg\`} style={{ position:"absolute", left:0, top:0, width:"100%", height:"100%", objectFit, borderRadius: wrapStyle.borderRadius as any }} src={manifest[n.fill.imageRef]||""} />;
+          })()
         : null;
       return <div key={n.id||\`\${depth}-\${idx}\`} style={wrapStyle} data-name={n.name}>{bg}{render(n.children, depth+1)}</div>;
     }
     if (kind==="IMAGE" && n.fill?.imageRef){
-      const style = { position:"absolute", left:n.x, top:n.y, width:n.w, height:n.h, objectFit:"cover", borderRadius:(n.corners?.uniform??0) } as React.CSSProperties;
+      // Respect the fill's fit mode: cover (default), contain, fill
+      const fitMode = n.fill?.fit || "cover";
+      const objectFit = fitMode === "fill" ? "fill" : fitMode === "contain" ? "contain" : "cover";
+      const style = { position:"absolute", left:n.x, top:n.y, width:n.w, height:n.h, objectFit, borderRadius:(n.corners?.uniform??0) } as React.CSSProperties;
       return <Img key={n.id||\`\${depth}-\${idx}\`} style={style} src={manifest[n.fill.imageRef]||""} alt={n.name} />;
     }
     const style = cssFromNode(n);

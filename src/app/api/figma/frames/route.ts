@@ -26,35 +26,23 @@ async function refreshAccessToken(refreshToken: string) {
 export async function GET(req: NextRequest) {
   let accessToken = req.cookies.get("figma_access")?.value;
   const refreshToken = req.cookies.get("figma_refresh")?.value;
+  // track refreshed tokens to set on the final response
+  let refreshed: {
+    access_token: string;
+    refresh_token?: string;
+    expires_in: number;
+  } | null = null;
 
   try {
-    // If no access token, try refreshing
+    // If no access token, try refreshing but continue the request
     if (!accessToken && refreshToken) {
       const tokens = await refreshAccessToken(refreshToken);
       accessToken = tokens.access_token;
-
-      // update cookies and return success response
-      const response = NextResponse.json({ 
-        message: "Token refreshed successfully",
-        accessToken: tokens.access_token 
-      });
-      response.cookies.set("figma_access", tokens.access_token, {
-        httpOnly: true,
-        secure: true,
-        sameSite: "lax",
-        path: "/",
-        maxAge: Math.max(60, tokens.expires_in - 60),
-      });
-      if (tokens.refresh_token) {
-        response.cookies.set("figma_refresh", tokens.refresh_token, {
-          httpOnly: true,
-          secure: true,
-          sameSite: "lax",
-          path: "/",
-          maxAge: 60 * 60 * 24 * 30,
-        });
-      }
-      return response;
+      refreshed = {
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+        expires_in: tokens.expires_in,
+      };
     }
 
     if (!accessToken) {
@@ -135,11 +123,33 @@ export async function GET(req: NextRequest) {
       extractedTree = mergedRoots.flatMap(buildHierarchy);
     }
 
-    // Return both raw JSON and extracted properties
-    return NextResponse.json({
+    // Build response body
+    const body = {
       raw: data,
       extracted: extractedTree,
-    });
+    };
+
+    // Create response and set any refreshed cookies
+    const response = NextResponse.json(body);
+    if (refreshed) {
+      response.cookies.set("figma_access", refreshed.access_token, {
+        httpOnly: true,
+        secure: true,
+        sameSite: "lax",
+        path: "/",
+        maxAge: Math.max(60, refreshed.expires_in - 60),
+      });
+      if (refreshed.refresh_token) {
+        response.cookies.set("figma_refresh", refreshed.refresh_token, {
+          httpOnly: true,
+          secure: true,
+          sameSite: "lax",
+          path: "/",
+          maxAge: 60 * 60 * 24 * 30,
+        });
+      }
+    }
+    return response;
 
   } catch (err) {
     console.error("Error fetching frames:", err);

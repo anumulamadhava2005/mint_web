@@ -111,13 +111,17 @@ function resolveImgSrc(d: DrawableNode, manifest: Map<string, string>): string {
   return ref.startsWith("data:") ? ref : "";
 }
 function jsxImgWithStyleLocalTree(d: DrawableNode, manifest: Map<string, string>) {
+  // Respect the fill's fit mode: cover (default), contain, fill
+  const fitMode = (d.fill as any)?.fit || "cover";
+  const objectFit = fitMode === "fill" ? "fill" : fitMode === "contain" ? "contain" : "cover";
+  
   const style: Record<string, any> = {
     position: "absolute",
     left: d.x,
     top: d.y,
     width: d.w,
     height: d.h,
-    objectFit: "cover",
+    objectFit,
     borderRadius:
       (d.corners?.uniform ?? d.corners?.topLeft ?? d.corners?.topRight ?? d.corners?.bottomRight ?? d.corners?.bottomLeft) ?? 0,
   };
@@ -128,13 +132,17 @@ function jsxImgWithStyleLocalTree(d: DrawableNode, manifest: Map<string, string>
 }
 
 function jsxImgCoverInsideWrapper(d: DrawableNode, manifest: Map<string, string>) {
+  // Respect the fill's fit mode: cover (default), contain, fill
+  const fitMode = (d.fill as any)?.fit || "cover";
+  const objectFit = fitMode === "fill" ? "fill" : fitMode === "contain" ? "contain" : "cover";
+  
   const style: Record<string, any> = {
     position: "absolute",
     left: 0,
     top: 0,
     width: "100%",
     height: "100%",
-    objectFit: "cover",
+    objectFit,
     borderRadius:
       (d.corners?.uniform ?? d.corners?.topLeft ?? d.corners?.topRight ?? d.corners?.bottomRight ?? d.corners?.bottomLeft) ?? 0,
   };

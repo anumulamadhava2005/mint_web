@@ -162,32 +162,76 @@ async function resolveManifestFromFigma(fileKey: string, token: string, roots: a
 async function getImagesByRef(fileKey: string, imageRefs: string[], token: string, _arg3: number): Promise<Record<string, string>> {
   if (!fileKey || !Array.isArray(imageRefs) || !token) throw new Error("fileKey, imageRefs, and token are required");
   if (imageRefs.length === 0) return {};
-  const ids = imageRefs.join(",");
-  const url = `https://api.figma.com/v1/images/${fileKey}?ids=${encodeURIComponent(ids)}`;
-  const res = await fetch(url, { headers: { "X-Figma-Token": token }, cache: "no-store" });
-  if (!res.ok) {
-    const text = await res.text();
-    const err: any = new Error(`Figma image fetch failed: ${res.status} ${text}`);
-    err.status = res.status;
-    throw err;
+  const out: Record<string, string> = {};
+  const chunkSize = 40; // conservative chunk to avoid overly long query strings
+  for (let i = 0; i < imageRefs.length; i += chunkSize) {
+    const batch = imageRefs.slice(i, i + chunkSize);
+    const ids = batch.join(",");
+    const url = `https://api.figma.com/v1/images/${fileKey}?ids=${encodeURIComponent(ids)}`;
+    try {
+      const res = await fetch(url, { headers: { "X-Figma-Token": token }, cache: "no-store" });
+      if (!res.ok) {
+        // If CloudFront or server rejects long requests (413) or similar, fall back to per-id fetches for this batch
+        if (res.status === 413 || res.status === 414) {
+          for (const id of batch) {
+            try {
+              const singleUrl = `https://api.figma.com/v1/images/${fileKey}?ids=${encodeURIComponent(id)}`;
+              const r2 = await fetch(singleUrl, { headers: { "X-Figma-Token": token }, cache: "no-store" });
+              if (!r2.ok) continue;
+              const j2 = await r2.json();
+              Object.assign(out, j2?.images ?? {});
+            } catch (e) {
+              // ignore per-id failures
+              continue;
+            }
+          }
+          continue;
+        }
+        const text = await res.text().catch(() => "");
+        const err: any = new Error(`Figma image fetch failed: ${res.status} ${text}`);
+        err.status = res.status;
+        throw err;
+      }
+      const js = await res.json();
+      Object.assign(out, js?.images ?? {});
+    } catch (err) {
+      // If network or other failure, try per-id within this batch as a best-effort
+      for (const id of batch) {
+        try {
+          const singleUrl = `https://api.figma.com/v1/images/${fileKey}?ids=${encodeURIComponent(id)}`;
+          const r2 = await fetch(singleUrl, { headers: { "X-Figma-Token": token }, cache: "no-store" });
+          if (!r2.ok) continue;
+          const j2 = await r2.json();
+          Object.assign(out, j2?.images ?? {});
+        } catch (e) {
+          continue;
+        }
+      }
+    }
   }
-  const js = await res.json();
-  return js?.images ?? {};
+  return out;
 }
 
 // --------- Route handler ---------
 
 export async function POST(req: NextRequest) {
   try {
-    const { fileKey, roots, manifest, refW, refH, referenceFrame } = await req.json();
+    const body = await req.json();
+    const { fileKey, roots, manifest, refW, refH, referenceFrame, images: clientImages } = body as any;
+
+    // Basic validation
+    if (!fileKey || !Array.isArray(roots) || !refW || !refH) {
+      return NextResponse.json({ error: "fileKey, roots, refW, refH required" }, { status: 400 });
+    }
 
     if (!fileKey || !Array.isArray(roots) || !refW || !refH) {
       return NextResponse.json({ error: "fileKey, roots, refW, refH required" }, { status: 400 });
     }
 
-    // Manifest resolution (tolerate failures, publish shapes/text anyway)
+  // Manifest resolution (tolerate failures, publish shapes/text anyway)
     const sessionToken = cookies().get("figma_access")?.value || cookies().get("token")?.value || "";
-    let finalManifest: Record<string, string> = manifest || {};
+  // finalManifest initially from payload if provided
+  let finalManifest: Record<string, string> = manifest || {};
     if (!finalManifest || Object.keys(finalManifest).length === 0) {
       if (sessionToken) {
         try {
@@ -201,7 +245,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Optional extra attempt to fill gaps using /v1/images with ids (not imageRef); keep non-fatal
+  // Optional extra attempt to fill gaps using /v1/images with ids (not imageRef); keep non-fatal
     const imageRefs = collectImageRefs(roots);
     let fetchedImages: Record<string, string> = {};
     const missingImageRefs: string[] = [];
@@ -225,7 +269,91 @@ export async function POST(req: NextRequest) {
         }
       }
     }
-    const mergedManifest = { ...(finalManifest || {}), ...(fetchedImages || {}) };
+
+  // Merge known manifests (payload -> figma API results)
+  let mergedManifest: Record<string, string> = { ...(finalManifest || {}), ...(fetchedImages || {}) };
+
+    // If client supplied `images` (maps nodeId or nodeName -> url), try to associate those with imageRefs.
+    // Build map imageRef -> [nodeIds/names] so we can look up provided client images
+  const refToNodes = new Map<string, Array<string>>();
+    function collectRefNodes(n: any) {
+      if (n?.fill?.type === "IMAGE" && n?.fill?.imageRef) {
+        const r = String(n.fill.imageRef);
+        const keyCandidates: string[] = [];
+        if (n.id) keyCandidates.push(String(n.id));
+        if (n.name) keyCandidates.push(String(n.name));
+        if (!refToNodes.has(r)) refToNodes.set(r, []);
+        refToNodes.get(r)!.push(...keyCandidates);
+      }
+      if (Array.isArray(n?.children)) for (const c of n.children) collectRefNodes(c);
+    }
+    for (const r of roots || []) collectRefNodes(r);
+
+  // helper to get origin for resolving relative paths (try several headers)
+  const host = req.headers.get("x-forwarded-host") || req.headers.get("host");
+  const proto = req.headers.get("x-forwarded-proto") || req.headers.get("x-forwarded-protocol") || req.headers.get("x-forwarded-scheme") || undefined;
+  const originHeader = req.headers.get("origin") || (host ? `${proto || "https"}://${host}` : undefined);
+
+    // Attempt to resolve remaining refs using clientImages or by proxying absolute URLs
+    const resolvedEntries: Array<{ ref: string; url: string; source: string }> = [];
+    const unresolved: string[] = [];
+    for (const ref of imageRefs) {
+      if (mergedManifest[ref]) {
+        resolvedEntries.push({ ref, url: mergedManifest[ref], source: "manifest" });
+        continue; // already resolved
+      }
+      // Try client-sent images: find node keys referencing this ref
+      const nodes = refToNodes.get(ref) || [];
+      let foundUrl: string | undefined | null = null;
+      let source: string | null = null;
+      try {
+        if (clientImages && typeof clientImages === "object") {
+          for (const k of nodes) {
+            const v = clientImages[k];
+            if (typeof v === "string" && v.length > 0) {
+              foundUrl = v;
+              source = `client:${k}`;
+              break;
+            }
+          }
+        }
+
+        // If still not found, try a few fallbacks: if ref is absolute http(s), use it
+        if (!foundUrl && typeof ref === "string") {
+          if (/^https?:\/\//i.test(ref)) {
+            foundUrl = ref; source = "ref-absolute";
+          } else if (ref.startsWith("//")) {
+            foundUrl = `https:${ref}`; source = "ref-protocol-relative";
+          } else if (originHeader && ref.startsWith("/")) {
+            foundUrl = originHeader.replace(/\/$/, "") + ref; source = "ref-site-relative";
+          }
+        }
+
+        if (foundUrl) {
+          // Normalize and choose proxied path for external hosts
+          try {
+            const u = new URL(foundUrl, originHeader);
+            const hostHeader = req.headers.get("host") || "";
+            if (u.hostname && hostHeader && u.hostname !== hostHeader && /^https?:$/i.test(u.protocol)) {
+              mergedManifest[ref] = `/api/image-proxy?url=${encodeURIComponent(foundUrl)}`;
+            } else {
+              mergedManifest[ref] = foundUrl;
+            }
+            resolvedEntries.push({ ref, url: mergedManifest[ref], source: source || "computed" });
+          } catch (e) {
+            // Fallback: store raw foundUrl
+            mergedManifest[ref] = foundUrl;
+            resolvedEntries.push({ ref, url: foundUrl, source: source || "computed-fallback" });
+          }
+        } else {
+          unresolved.push(ref);
+        }
+      } catch (err) {
+        // Never throw on per-ref resolution; just mark unresolved and continue
+        console.warn(`Failed to resolve image ref ${ref}:`, err);
+        unresolved.push(ref);
+      }
+    }
 
     // --------- Build mapped roots with correct math ---------
 
@@ -345,6 +473,8 @@ export async function POST(req: NextRequest) {
       version: snap.version,
       storedManifestKeys: Object.keys(mergedManifest).length,
       staticSnapshotUrl: `/live/snapshots/${encodeURIComponent(fileKey)}.json`,
+      resolvedImages: resolvedEntries || [],
+      unresolvedImageRefs: unresolved || [],
     };
 
     return new Response(JSON.stringify(result), { status: 200, headers: CORS });

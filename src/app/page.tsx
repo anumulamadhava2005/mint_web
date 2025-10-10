@@ -11,6 +11,7 @@ import { useDrawable } from "../../hooks/useDrawable";
 import { NodeInput, ReferenceFrame } from "../../lib/figma-types";
 import Sidebar from "../../components/Sidebar";
 import { Home } from "../../components/home";
+import { ProjectsPage } from "../../components/ProjectsPage";
 import Spinner from "../../components/Spinner";
 import styles from "./page.module.css";
 
@@ -55,7 +56,9 @@ function HomePage() {
       setConvertOpen(false);
     }
   }
+  
   const [showConverter, setShowConverter] = useState(false);
+  const [showProjects, setShowProjects] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [rawRoots, setRawRoots] = useState<NodeInput[] | null>(null);
@@ -69,6 +72,43 @@ function HomePage() {
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [convertOpen, setConvertOpen] = useState(false);
+
+  // State persistence helpers
+  const saveStateToStorage = useCallback((state: Partial<{
+    fileName: string | null;
+    rawRoots: NodeInput[] | null;
+    selectedIds: string[];
+    selectedFrameId: string;
+    images: Record<string, string>;
+    scale: number;
+    offset: { x: number; y: number };
+    lastFileKey: string | null;
+  }>) => {
+    try {
+      const existing = JSON.parse(localStorage.getItem('mint-editor-state') || '{}');
+      const merged = { ...existing, ...state, timestamp: Date.now() };
+      localStorage.setItem('mint-editor-state', JSON.stringify(merged));
+    } catch (e) {
+      console.warn('Failed to save state:', e);
+    }
+  }, []);
+
+  const loadStateFromStorage = useCallback(() => {
+    try {
+      const stored = localStorage.getItem('mint-editor-state');
+      if (!stored) return null;
+      const state = JSON.parse(stored);
+      // Only restore if saved within last 24 hours
+      if (state.timestamp && (Date.now() - state.timestamp) > 24 * 60 * 60 * 1000) {
+        localStorage.removeItem('mint-editor-state');
+        return null;
+      }
+      return state;
+    } catch (e) {
+      console.warn('Failed to load state:', e);
+      return null;
+    }
+  }, []);
 
   // --- History for undo/redo (track rawRoots + viewport) ---
   const [history, setHistory] = useState<ViewState[]>([]);
@@ -172,8 +212,6 @@ function HomePage() {
     setOffset({ x: pad - minX * s, y: pad - minY * s });
   }, [drawableNodes]);
 
-  // Toolbar is always visible now
-
   async function fetchUser() {
     try {
       const res = await fetch("/api/figma/me");
@@ -188,22 +226,120 @@ function HomePage() {
     return null;
   }
 
+  // Check URL hash on mount to determine which page to show
+  useEffect(() => {
+    const checkRoute = () => {
+      const hash = window.location.hash;
+      
+      if (hash === '#projects') {
+        setShowProjects(true);
+        setShowConverter(false);
+      } else if (hash.startsWith('#project=')) {
+        // Coming from projects page with a specific project
+        const projectId = hash.replace('#project=', '');
+        loadProjectById(projectId);
+        setShowProjects(false);
+        setShowConverter(false);
+      } else {
+        setShowProjects(false);
+      }
+    };
+
+    checkRoute();
+    window.addEventListener('hashchange', checkRoute);
+    return () => window.removeEventListener('hashchange', checkRoute);
+  }, []);
+
+  // Load project from storage when opening from projects page
+  function loadProjectById(projectId: string) {
+    try {
+      const stored = sessionStorage.getItem('currentProject');
+      if (stored) {
+        const project = JSON.parse(stored);
+        if (project.id === projectId) {
+          setFileName(project.name);
+          setRawRoots(project.rawRoots);
+          setLastFileKey(project.fileKey);
+          setFitPending(true);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load from sessionStorage:', e);
+    }
+    
+    // Fallback to window object
+    const project = (window as any).__currentProject;
+    if (project && project.id === projectId) {
+      setFileName(project.name);
+      setRawRoots(project.rawRoots);
+      setLastFileKey(project.fileKey);
+      setFitPending(true);
+    }
+  }
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const justLoggedIn = params.get('logged_in');
     fetchUser().then((userData) => {
       if (justLoggedIn && userData) {
-        setShowConverter(true);
-        window.history.replaceState({}, '', '/');
+        // Redirect to projects page after login
+        window.location.href = '/#projects';
       }
     });
   }, []);
 
   useEffect(() => {
-    if (user && !rawRoots && !showConverter) {
+    if (user && !rawRoots && !showConverter && !showProjects) {
       setShowConverter(true);
     }
-  }, [user, rawRoots, showConverter]);
+  }, [user, rawRoots, showConverter, showProjects]);
+
+  // Restore state on mount
+  useEffect(() => {
+    const savedState = loadStateFromStorage();
+    if (savedState) {
+      if (savedState.fileName) setFileName(savedState.fileName);
+      if (savedState.rawRoots) setRawRoots(savedState.rawRoots);
+      if (savedState.selectedIds && Array.isArray(savedState.selectedIds)) {
+        setSelectedIds(new Set(savedState.selectedIds));
+      }
+      if (savedState.selectedFrameId) setSelectedFrameId(savedState.selectedFrameId);
+      if (savedState.images) {
+        // Only restore string URLs, not HTMLImageElement instances
+        const stringImages: Record<string, string> = {};
+        Object.entries(savedState.images).forEach(([key, value]) => {
+          if (typeof value === 'string') stringImages[key] = value;
+        });
+        setImages(stringImages);
+      }
+      if (typeof savedState.scale === 'number') setScale(savedState.scale);
+      if (savedState.offset && typeof savedState.offset.x === 'number' && typeof savedState.offset.y === 'number') {
+        setOffset(savedState.offset);
+      }
+    }
+  }, [loadStateFromStorage]);
+
+  // Save state on changes
+  useEffect(() => {
+    if (rawRoots || fileName || Object.keys(images).length > 0) {
+      // Convert images to serializable format (only strings)
+      const serializableImages: Record<string, string> = {};
+      Object.entries(images).forEach(([key, value]) => {
+        if (typeof value === 'string') serializableImages[key] = value;
+      });
+      
+      saveStateToStorage({
+        fileName,
+        rawRoots,
+        selectedIds: Array.from(selectedIds),
+        selectedFrameId,
+        images: serializableImages,
+        scale,
+        offset
+      });
+    }
+  }, [rawRoots, fileName, selectedIds, selectedFrameId, images, scale, offset, saveStateToStorage]);
 
   async function onFetch(fileUrlOrKey: string) {
     setError(null);
@@ -261,9 +397,8 @@ function HomePage() {
       } else {
         setRawRoots(roots);
         setSelectedIds(new Set());
-        setFitPending(true); // trigger auto-fit after render
+        setFitPending(true);
         setLastFileKey(fileKey ?? key);
-  // setToolbarHidden(true); // Toolbar always visible
       }
       setFileName(fName);
     } catch (e: any) {
@@ -320,210 +455,192 @@ function HomePage() {
     });
     setUser(null);
     setShowConverter(false);
+    setShowProjects(false);
     setFileName(null);
     setRawRoots(null);
     setError(null);
-  setSelectedIds(new Set());
-  setSelectedFrameId("");
-}
-
-// Track the last loaded file key for use in commitLive
-const [lastFileKey, setLastFileKey] = useState<string | null>(null);
-
-// NEW: success modal state for commitLive
-const [commitSuccess, setCommitSuccess] = useState(false);
-const [commitMessage, setCommitMessage] = useState<string | null>(null);
-
-// helpers: flatten tree, rect ops, synthetic root and spatial nesting
-function flattenNodes(nodes: any[], out: any[] = []) {
-	(nodes || []).forEach((n) => {
-		out.push(n);
-		if (Array.isArray(n.children) && n.children.length) flattenNodes(n.children, out);
-	});
-	return out;
-}
-
-function rectOverlaps(a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }) {
-	const ax1 = a.x, ay1 = a.y, ax2 = a.x + (a.w || 0);
-	const ay2 = a.y + (a.h || 0);
-	const bx1 = b.x, by1 = b.y, bx2 = b.x + (b.w || 0);
-	const by2 = b.y + (b.h || 0);
-	return !(bx1 >= ax2 || bx2 <= ax1 || by1 >= ay2 || by2 <= ay1);
-}
-
-function rectContains(outer: { x: number; y: number; w: number; h: number }, inner: { x: number; y: number; w: number; h: number }) {
-	return (inner.x >= outer.x && inner.y >= outer.y && (inner.x + (inner.w || 0)) <= (outer.x + (outer.w || 0)) && (inner.y + (inner.h || 0)) <= (outer.y + (outer.h || 0)));
-}
-
-function makeSyntheticRootFromRef(ref: ReferenceFrame): any {
-  return {
-    id: `__ref__${ref.id}`,
-    name: ref.id ?? "ref",
-    type: "FRAME",
-    ax: ref.x ?? 0,
-    ay: ref.y ?? 0,
-    x: 0,
-    y: 0,
-    w: Math.round(ref.width ?? 0),
-    h: Math.round(ref.height ?? 0),
-    textRaw: "",
-    fill: null,
-    stroke: null,
-    corners: { uniform: null, topLeft: null, topRight: null, bottomRight: null, bottomLeft: null },
-    effects: [],
-    text: null,
-    children: [] as any[],
-  };
-}
-
-// Rebuild subtree for a top-level node, but only include children that are inside the 'insideSet'.
-// Also convert local coordinates for synthetic root: child.x = Math.round(child.ax - ref.x)
-function rebuildSubtree(node: any, insideSet: Set<string>, ref: ReferenceFrame): any {
-	const clone = JSON.parse(JSON.stringify(node));
-	// preserve ax/ay and w/h; set local x/y relative to ref
-	clone.x = Math.round((node.ax ?? node.x ?? 0) - (ref.x ?? 0));
-	clone.y = Math.round((node.ay ?? node.y ?? 0) - (ref.y ?? 0));
-	clone.w = Math.round(node.w ?? node.width ?? 0);
-	clone.h = Math.round(node.h ?? node.height ?? 0);
-	clone.width = clone.width ?? clone.w;
-	clone.height = clone.height ?? clone.h;
-	if (Array.isArray(node.children) && node.children.length) {
-		clone.children = node.children
-			.filter((c: any) => insideSet.has(String(c.id)))
-			.map((c: any) => rebuildSubtree(c, insideSet, ref));
-	} else {
-		clone.children = [];
-	}
-	return clone;
-}
-
-async function commitLive() {
-  try {
-    if (!lastFileKey) {
-      alert("Open a Figma file first so the fileKey is known.");
-      return;
-    }
-
-    const normalizedKey = extractFileKey(lastFileKey) ?? lastFileKey;
-
-    // Derive ref size from the selected frame if present, else from drawable bounds
-    const refW = selectedFrame?.width ??
-      Math.max(1, ...drawableNodes.map(n => n.x + n.width)) - Math.min(0, ...drawableNodes.map(n => n.x));
-    const refH = selectedFrame?.height ??
-      Math.max(1, ...drawableNodes.map(n => n.y + n.height)) - Math.min(0, ...drawableNodes.map(n => n.y));
-
-    // Prefer sending rawRoots (the authoritative tree) if available, fall back to drawableNodes
-    const sourceNodes = rawRoots ?? [];
-
-    // Compute roots the same way the converter does
-    let computedRoots: any[] = [];
-    if (selectedFrame) {
-      const ref = selectedFrame;
-      // Try to find the frame node in the original tree by id
-      const refNode = sourceNodes && findNodeById(sourceNodes, ref.id);
-      if (refNode && Array.isArray(refNode.children) && refNode.children.length > 0) {
-        // If the reference frame is an existing node with children, use it directly
-        computedRoots = [refNode];
-      } else {
-        // Build synthetic root and include any nodes whose absolute rect overlaps the reference frame
-        const syntheticRoot = makeSyntheticRootFromRef(ref);
-        const all = flattenNodes(sourceNodes);
-        // build map of node id => node for preserving subtree links
-        const allById = new Map<string, any>();
-        all.forEach((n) => { if (n && n.id) allById.set(String(n.id), n); });
-
-        const inside = all.filter((n) => {
-          const nodeRect = { x: Number(n.ax ?? n.x ?? 0), y: Number(n.ay ?? n.y ?? 0), w: Number(n.w ?? n.width ?? 0), h: Number(n.h ?? n.height ?? 0) };
-          const refRect = { x: Number(ref.x ?? 0), y: Number(ref.y ?? 0), w: Number(ref.width ?? 0), h: Number(ref.height ?? 0) };
-          return rectOverlaps(refRect, nodeRect);
-        });
-
-        const insideSet = new Set(inside.map((n) => String(n.id)));
-
-        // Choose top-level inside nodes (those not contained by another inside node)
-        const topLevel = inside.filter((n) => {
-          return !inside.some((p) => p !== n && rectContains({ x: p.ax ?? p.x ?? 0, y: p.ay ?? p.y ?? 0, w: p.w ?? p.width ?? 0, h: p.h ?? p.height ?? 0 },
-                                                               { x: n.ax ?? n.x ?? 0, y: n.ay ?? n.y ?? 0, w: n.w ?? n.width ?? 0, h: n.h ?? n.height ?? 0 }));
-        });
-
-        // Rebuild top-level subtrees relative to synthetic root
-        syntheticRoot.children = topLevel.map((t) => rebuildSubtree(t, insideSet, ref));
-        computedRoots = [syntheticRoot];
-      }
-    } else {
-      computedRoots = sourceNodes;
-    }
-
-    // Optionally do any post-processing comparable to wrapOverflowAsHorizontal in the converter.
-    // Minimal compatibility: no-op here, but preserved hook location for parity.
-    // if (selectedFrame && computedRoots.length === 1) {
-//       wrapOverflowAsHorizontal(computedRoots[0], selectedFrame);
-//    }
-
-    const payloadRoots = computedRoots;
-
-    const payload = {
-      fileKey: normalizedKey,
-      // send the full node tree so the server can persist the exact changes
-      roots: payloadRoots,
-      refW: Math.round(refW),
-      refH: Math.round(refH),
-      // helpful metadata for server to rebuild manifests / cache
-      fileName: fileName ?? undefined,
-      images, // image refs currently in the editor
-      referenceFrame: selectedFrame ?? null,
-      forcePublish: true,
-      cacheBuster: Date.now(),
-    };
-
-    const res = await fetch("/api/live/publish", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (res.status === 401) {
-      window.location.href = "/api/auth/login"; // ensure OAuth session, then retry
-      return;
-    }
-    if (!res.ok) {
-      // surface server error text if present
-      const errText = await res.text();
-      throw new Error(errText || "Publish failed");
-    }
-
-    // Try to extract a friendly message from the response
-    let msg = "Published successfully";
-    try {
-      const text = await res.text();
-      if (text) {
-        try {
-          const j = JSON.parse(text);
-          if (j?.message) msg = j.message;
-          else if (typeof text === "string" && text.trim()) msg = text;
-        } catch {
-          msg = text;
-        }
-      }
-    } catch {
-      /* ignore parsing errors */
-    }
-
-    // Indicate success to the user via modal
-    setCommitMessage(msg);
-    setCommitSuccess(true);
-    // No UI change needed otherwise: the running app at :3002 receives SSE "version" and refreshes
-  } catch (e: any) {
-    alert(e?.message || String(e));
+    setSelectedIds(new Set());
+    setSelectedFrameId("");
   }
-}
 
-// Auto-close the success modal after a short delay
-useEffect(() => {
-  if (!commitSuccess) return;
-  const t = setTimeout(() => setCommitSuccess(false), 3000);
-  return () => clearTimeout(t);
-}, [commitSuccess]);
+  // Track the last loaded file key for use in commitLive
+  const [lastFileKey, setLastFileKey] = useState<string | null>(null);
 
+  // NEW: success modal state for commitLive
+  const [commitSuccess, setCommitSuccess] = useState(false);
+  const [commitMessage, setCommitMessage] = useState<string | null>(null);
+
+  // helpers: flatten tree, rect ops, synthetic root and spatial nesting
+  function flattenNodes(nodes: any[], out: any[] = []) {
+    (nodes || []).forEach((n) => {
+      out.push(n);
+      if (Array.isArray(n.children) && n.children.length) flattenNodes(n.children, out);
+    });
+    return out;
+  }
+
+  function rectOverlaps(a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }) {
+    const ax1 = a.x, ay1 = a.y, ax2 = a.x + (a.w || 0);
+    const ay2 = a.y + (a.h || 0);
+    const bx1 = b.x, by1 = b.y, bx2 = b.x + (b.w || 0);
+    const by2 = b.y + (b.h || 0);
+    return !(bx1 >= ax2 || bx2 <= ax1 || by1 >= ay2 || by2 <= ay1);
+  }
+
+  function rectContains(outer: { x: number; y: number; w: number; h: number }, inner: { x: number; y: number; w: number; h: number }) {
+    return (inner.x >= outer.x && inner.y >= outer.y && (inner.x + (inner.w || 0)) <= (outer.x + (outer.w || 0)) && (inner.y + (inner.h || 0)) <= (outer.y + (outer.h || 0)));
+  }
+
+  function makeSyntheticRootFromRef(ref: ReferenceFrame): any {
+    return {
+      id: `__ref__${ref.id}`,
+      name: ref.id ?? "ref",
+      type: "FRAME",
+      ax: ref.x ?? 0,
+      ay: ref.y ?? 0,
+      x: 0,
+      y: 0,
+      w: Math.round(ref.width ?? 0),
+      h: Math.round(ref.height ?? 0),
+      textRaw: "",
+      fill: null,
+      stroke: null,
+      corners: { uniform: null, topLeft: null, topRight: null, bottomRight: null, bottomLeft: null },
+      effects: [],
+      text: null,
+      children: [] as any[],
+    };
+  }
+
+  function rebuildSubtree(node: any, insideSet: Set<string>, ref: ReferenceFrame): any {
+    const clone = JSON.parse(JSON.stringify(node));
+    clone.x = Math.round((node.ax ?? node.x ?? 0) - (ref.x ?? 0));
+    clone.y = Math.round((node.ay ?? node.y ?? 0) - (ref.y ?? 0));
+    clone.w = Math.round(node.w ?? node.width ?? 0);
+    clone.h = Math.round(node.h ?? node.height ?? 0);
+    clone.width = clone.width ?? clone.w;
+    clone.height = clone.height ?? clone.h;
+    if (Array.isArray(node.children) && node.children.length) {
+      clone.children = node.children
+        .filter((c: any) => insideSet.has(String(c.id)))
+        .map((c: any) => rebuildSubtree(c, insideSet, ref));
+    } else {
+      clone.children = [];
+    }
+    return clone;
+  }
+
+  async function commitLive() {
+    try {
+      if (!lastFileKey) {
+        alert("Open a Figma file first so the fileKey is known.");
+        return;
+      }
+
+      const normalizedKey = extractFileKey(lastFileKey) ?? lastFileKey;
+
+      const refW = selectedFrame?.width ??
+        Math.max(1, ...drawableNodes.map(n => n.x + n.width)) - Math.min(0, ...drawableNodes.map(n => n.x));
+      const refH = selectedFrame?.height ??
+        Math.max(1, ...drawableNodes.map(n => n.y + n.height)) - Math.min(0, ...drawableNodes.map(n => n.y));
+
+      const sourceNodes = rawRoots ?? [];
+
+      let computedRoots: any[] = [];
+      if (selectedFrame) {
+        const ref = selectedFrame;
+        const refNode = sourceNodes && findNodeById(sourceNodes, ref.id);
+        if (refNode && Array.isArray(refNode.children) && refNode.children.length > 0) {
+          computedRoots = [refNode];
+        } else {
+          const syntheticRoot = makeSyntheticRootFromRef(ref);
+          const all = flattenNodes(sourceNodes);
+          const allById = new Map<string, any>();
+          all.forEach((n) => { if (n && n.id) allById.set(String(n.id), n); });
+
+          const inside = all.filter((n) => {
+            const nodeRect = { x: Number(n.ax ?? n.x ?? 0), y: Number(n.ay ?? n.y ?? 0), w: Number(n.w ?? n.width ?? 0), h: Number(n.h ?? n.height ?? 0) };
+            const refRect = { x: Number(ref.x ?? 0), y: Number(ref.y ?? 0), w: Number(ref.width ?? 0), h: Number(ref.height ?? 0) };
+            return rectOverlaps(refRect, nodeRect);
+          });
+
+          const insideSet = new Set(inside.map((n) => String(n.id)));
+
+          const topLevel = inside.filter((n) => {
+            return !inside.some((p) => p !== n && rectContains({ x: p.ax ?? p.x ?? 0, y: p.ay ?? p.y ?? 0, w: p.w ?? p.width ?? 0, h: p.h ?? p.height ?? 0 },
+                                                                 { x: n.ax ?? n.x ?? 0, y: n.ay ?? n.y ?? 0, w: n.w ?? n.width ?? 0, h: n.h ?? n.height ?? 0 }));
+          });
+
+          syntheticRoot.children = topLevel.map((t) => rebuildSubtree(t, insideSet, ref));
+          computedRoots = [syntheticRoot];
+        }
+      } else {
+        computedRoots = sourceNodes;
+      }
+
+      const payloadRoots = computedRoots;
+
+      const payload = {
+        fileKey: normalizedKey,
+        roots: payloadRoots,
+        refW: Math.round(refW),
+        refH: Math.round(refH),
+        fileName: fileName ?? undefined,
+        images,
+        referenceFrame: selectedFrame ?? null,
+        forcePublish: true,
+        cacheBuster: Date.now(),
+      };
+
+      const res = await fetch("/api/live/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.status === 401) {
+        window.location.href = "/api/auth/login";
+        return;
+      }
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(errText || "Publish failed");
+      }
+
+      let msg = "Published successfully";
+      try {
+        const text = await res.text();
+        if (text) {
+          try {
+            const j = JSON.parse(text);
+            if (j?.message) msg = j.message;
+            else if (typeof text === "string" && text.trim()) msg = text;
+          } catch {
+            msg = text;
+          }
+        }
+      } catch {
+        /* ignore parsing errors */
+      }
+
+      setCommitMessage(msg);
+      setCommitSuccess(true);
+    } catch (e: any) {
+      alert(e?.message || String(e));
+    }
+  }
+
+  useEffect(() => {
+    if (!commitSuccess) return;
+    const t = setTimeout(() => setCommitSuccess(false), 3000);
+    return () => clearTimeout(t);
+  }, [commitSuccess]);
+
+  // Show projects page if routed there
+  if (showProjects) {
+    return <ProjectsPage />;
+  }
+
+  // Show landing page if not logged in and no data
   if (!showConverter && !rawRoots && !user && !loading) {
     return <Home onGetStarted={() => setShowConverter(true)} />;
   }
@@ -531,6 +648,7 @@ useEffect(() => {
   return (
     <div className={styles.root}>
       {loading && <Spinner />}
+      
       {/* Toolbar - Top bar with dark theme */}
       <div className={styles.toolbarBar}>
         <Toolbar
@@ -555,6 +673,7 @@ useEffect(() => {
           canUndo={history.length > 1}
           canRedo={redoStack.length > 0}
           onCommit={commitLive}
+          onNavigateProjects={() => window.location.href = '/#projects'}
         />
       </div>
 
@@ -599,7 +718,6 @@ useEffect(() => {
           <PropertiesPanel
             selectedNode={selectedNode}
             onUpdateSelected={updateSelected}
-            //images={images}
             onImageChange={(id, url) => handleImageChange(id, url)}
             onClose={() => setSelectedIds(new Set())}
           />
@@ -613,7 +731,7 @@ useEffect(() => {
         onConfirm={(val) => convertFile(val)} 
       />
 
-      {/* Success Modal (inline, lightweight) */}
+      {/* Success Modal */}
       {commitSuccess && (
         <div
           role="dialog"
@@ -667,14 +785,11 @@ useEffect(() => {
 }
 
 export default HomePage;
+
 function extractFileKey(lastFileKey: string) {
   // Handles both raw file keys and Figma URLs
-  // Figma file key is a 22-character alphanumeric string (sometimes 20-22)
-  // Example URL: https://www.figma.com/file/AbCdEfGhIjKlMnOpQrStUv/My-File?node-id=123%3A456
   const urlMatch = lastFileKey.match(/figma\.com\/file\/([a-zA-Z0-9]{20,})/);
   if (urlMatch) return urlMatch[1];
-  // If it's just a key, return as is
   if (/^[a-zA-Z0-9]{20,}$/.test(lastFileKey)) return lastFileKey;
   return null;
 }
-

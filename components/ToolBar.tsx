@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from "framer-motion"
 type FrameOption = ReferenceFrame
 
 export default function Toolbar(props: {
+  onNavigateProjects?: () => void;
   user: any
   onConnect: () => void
   onMountFetchUser: () => void
@@ -76,6 +77,11 @@ export default function Toolbar(props: {
     }
   }
 
+  function onNavigateProjects(event: React.MouseEvent<HTMLButtonElement, MouseEvent>): void {
+    if (props.onNavigateProjects) {
+      props.onNavigateProjects();
+    }
+  }
   return (
     <div style={{
       background: 'rgba(24,24,27,0.8)',
@@ -108,7 +114,10 @@ export default function Toolbar(props: {
             border: '1px solid #444',
             marginRight: 12,
           }}
-        />
+        >
+          
+</div>
+          
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 4 }}>
           <button onClick={props.onZoomOut} style={{ borderRadius: 6, padding: '4px 10px', background: '#23272f', border: '1px solid #444', color: '#fff', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}>-</button>
           <div style={{ fontSize: 12, color: '#9ca3af', padding: '0 6px', minWidth: 56, textAlign: 'center' }}>{zoomPct.toFixed(0)}%</div>
@@ -315,6 +324,15 @@ export default function Toolbar(props: {
                     >
                       Log out
                     </button>
+                    {user && (
+                          <button
+                          onClick={onNavigateProjects}
+                          className="px-3 py-2 text-sm hover:bg-gray-700 rounded-md transition-colors"
+                          title="My Projects"
+                        >
+                          Projects
+                        </button>
+                      )}
                   </motion.div>
                 )}
               </AnimatePresence>

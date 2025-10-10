@@ -1,41 +1,43 @@
-"use client";
+"use client"
 
-import { useMemo, useState } from "react";
-import styles from "./css/SectionDropdown.module.css";
-import { NodeInput } from "../lib/figma-types";
+import { useMemo } from "react"
+
+type NodeInput = {
+  id: string
+  name?: string
+  type?: string
+  absoluteBoundingBox?: { width?: number; height?: number }
+  children?: NodeInput[]
+}
 
 // Helper function to find top-level sections (typically frames)
 function getTopLevelFrames(nodes: NodeInput[] | null): NodeInput[] {
-  if (!nodes) return [];
+  if (!nodes) return []
   // Return nodes that are frames or have a position and size
-  return nodes.filter(
-    (n) => n.type === "FRAME" || (n.absoluteBoundingBox && n.absoluteBoundingBox.width > 0)
-  );
+  return nodes.filter((n) => n.type === "FRAME" || (n.absoluteBoundingBox && n.absoluteBoundingBox.width! > 0))
 }
 
 export default function SectionDropdown(props: {
-  rawRoots: NodeInput[] | null;
-  selectedId: string;
-  setSelectedId: (id: string) => void;
+  rawRoots: NodeInput[] | null
+  selectedId: string
+  setSelectedId: (id: string) => void
 }) {
-  const { rawRoots, selectedId, setSelectedId } = props;
-  const sections = useMemo(() => getTopLevelFrames(rawRoots), [rawRoots]);
+  const { rawRoots, selectedId, setSelectedId } = props
+  const sections = useMemo(() => getTopLevelFrames(rawRoots), [rawRoots])
 
   if (!sections || sections.length === 0) {
-    return null; // Don't show if there are no sections
+    return null // Don't show if there are no sections
   }
 
   return (
-    <div className={styles.wrapper}>
+    <div className="relative">
       <select
         value={selectedId || ""}
         onChange={(e) => setSelectedId(e.target.value)}
-        className={styles.select}
+        className="w-full appearance-none rounded-md border-2 border-black bg-white text-black px-3 py-2 pr-9 text-sm font-semibold shadow-[4px_4px_0_0_#000] focus:outline-none focus:ring-2 focus:ring-red-600"
         style={{
-          backgroundColor: '#18181b',
-          color: '#fff',
-          border: '1px solid #333',
-          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='white' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
+          backgroundImage:
+            "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' strokeWidth='1.5' strokeLinecap='round' strokeLinejoin='round'%3E%3Cpolyline points='6 8 10 12 14 8'%3E%3C/polyline%3E%3C/svg%3E\")",
           backgroundPosition: "right 0.5rem center",
           backgroundRepeat: "no-repeat",
           backgroundSize: "1em",
@@ -48,9 +50,6 @@ export default function SectionDropdown(props: {
           </option>
         ))}
       </select>
-      <div className={styles.chevron}>
-        {/* You can use an icon here if you prefer, for example: `▼` */}
-      </div>
     </div>
-  );
+  )
 }

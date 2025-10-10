@@ -71,7 +71,9 @@ export async function POST(req: NextRequest) {
     }
 
     const flatForAssets: Drawable[] = flattenTreeToDrawables(roots);
-    const { imageManifest, imageBlobs, skipped } = await collectAndDownloadImages(flatForAssets);
+  // Pass request origin so image URLs that are site-relative or proxied can be resolved
+  const origin = req.headers.get("origin") || `${req.nextUrl?.protocol || ""}${req.nextUrl?.host || ""}` || undefined;
+  const { imageManifest, imageBlobs, skipped } = await collectAndDownloadImages(flatForAssets, origin);
 
     const zip = new JSZip();
     switch (target) {

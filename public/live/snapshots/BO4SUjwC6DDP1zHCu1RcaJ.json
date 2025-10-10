@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 1,
   "payload": {
     "roots": [
       {
@@ -82,9 +82,9 @@
                     },
                     "ax": 1150,
                     "ay": -4518,
-                    "w": 97,
+                    "w": 59,
                     "h": 36,
-                    "width": 97,
+                    "width": 59,
                     "height": 36,
                     "textRaw": "Area",
                     "x": 0,
@@ -135,14 +135,13 @@
                           "letterSpacing": -0.35000000000000003,
                           "textDecoration": null,
                           "textCase": null,
-                          "characters": "Learn More",
-                          "color": "#ffffff"
+                          "characters": "Learn More"
                         },
                         "ax": 2240,
                         "ay": -4510,
-                        "w": 98,
+                        "w": 74,
                         "h": 20,
-                        "width": 98,
+                        "width": 74,
                         "height": 20,
                         "textRaw": "Learn More",
                         "x": 22,
@@ -279,7 +278,7 @@
                   "letterSpacing": -7,
                   "textDecoration": null,
                   "textCase": null,
-                  "characters": "Sushanth everything."
+                  "characters": "Browse everything."
                 },
                 "ax": 1150,
                 "ay": -4396,
@@ -287,7 +286,7 @@
                 "h": 112,
                 "width": 1195,
                 "height": 112,
-                "textRaw": "Sushanth everything.",
+                "textRaw": "Browse everything.",
                 "x": 0,
                 "y": 0,
                 "children": []
@@ -6758,14 +6757,13 @@
                           "letterSpacing": -0.35000000000000003,
                           "textDecoration": null,
                           "textCase": null,
-                          "characters": "Learn More",
-                          "color": "#ffffff"
+                          "characters": "Learn More"
                         },
                         "ax": 1706,
                         "ay": 2378.89990234375,
-                        "w": 102,
+                        "w": 74,
                         "h": 20,
-                        "width": 102,
+                        "width": 74,
                         "height": 20,
                         "textRaw": "Learn More",
                         "x": 256,
@@ -7390,8 +7388,8 @@
             },
             "effects": [
               {
-                "type": "DROP_SHADOW",
-                "boxShadow": ""
+                "type": "BACKGROUND_BLUR",
+                "boxShadow": "0px 0px 30px 0px rgba(0,0,0,0.2)"
               }
             ],
             "text": null,
@@ -7425,9 +7423,9 @@
                 },
                 "ax": 1572.5,
                 "ay": -4508,
-                "w": 68,
+                "w": 54,
                 "h": 20,
-                "width": 68,
+                "width": 54,
                 "height": 20,
                 "textRaw": "Benefits",
                 "x": 24,
@@ -7501,9 +7499,9 @@
                 },
                 "ax": 1773.5,
                 "ay": -4508,
-                "w": 77,
+                "w": 50,
                 "h": 20,
-                "width": 77,
+                "width": 50,
                 "height": 20,
                 "textRaw": "How-to",
                 "x": 225,
