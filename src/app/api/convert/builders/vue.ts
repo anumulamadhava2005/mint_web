@@ -97,7 +97,10 @@ const TreeNode = defineComponent({
     const n = props.node;
     const isImg = n.fill?.type==="IMAGE" && !!n.fill.imageRef;
     if(isImg){
-      const s:any = { position:"absolute", left:n.x, top:n.y, width:n.w, height:n.h, objectFit:"cover" };
+      // Respect the fill's fit mode: cover (default), contain, fill
+      const fitMode = n.fill?.fit || "cover";
+      const objectFit = fitMode === "fill" ? "fill" : fitMode === "contain" ? "contain" : "cover";
+      const s:any = { position:"absolute", left:n.x, top:n.y, width:n.w, height:n.h, objectFit };
       return ()=> h("img", { style: s, alt: n.name, src: typeof n.fill.imageRef==="string" && n.fill.imageRef.startsWith("data:") ? n.fill.imageRef : "" });
     }
     if(n.children.length>0){

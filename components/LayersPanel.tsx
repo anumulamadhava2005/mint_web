@@ -1,15 +1,18 @@
 "use client"
 
-// components/LayersPanel.tsx
 import React from "react"
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core"
 import { arrayMove, SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { GripVertical, ChevronRight, ChevronDown } from "lucide-react"
-// Use NodeInput from shared types
-import type { NodeInput } from "../lib/figma-types"
 import { motion, AnimatePresence } from "framer-motion"
-import styles from "./css/LayersPanel.module.css"
+
+type NodeInput = {
+  id: string
+  name?: string
+  type?: string
+  children?: NodeInput[]
+}
 
 interface LayersPanelProps {
   layers: NodeInput[]
@@ -35,13 +38,16 @@ const SortableLayer: React.FC<{
     opacity: isDragging ? 0.5 : 1,
   }
 
-  const hasChildren = layer.children && layer.children.length > 0
+  const hasChildren = !!(layer.children && layer.children.length > 0)
   const isExpanded = expandedIds.has(layer.id)
 
   return (
-    <motion.div ref={setNodeRef} style={style} layout className={styles.rowWrap}>
+    <motion.div ref={setNodeRef} style={style} layout className="mb-1">
       <div
-        className={`${styles.row} ${isSelected ? styles.rowSelected : `${styles.rowDefault} ${styles.rowHover}`}`}
+        className={[
+          "flex items-center gap-2 px-2 py-1.5 rounded-md border-2 shadow-[3px_3px_0_0_#000] transition-all",
+          isSelected ? "bg-red-600 text-white border-black" : "bg-white text-black border-black hover:-translate-y-0.5",
+        ].join(" ")}
         onClick={(e) => {
           e.stopPropagation()
           onSelect(layer.id)
@@ -50,9 +56,10 @@ const SortableLayer: React.FC<{
         <div
           {...attributes}
           {...listeners}
-          className={styles.dragHandle}
+          className="cursor-grab p-1 rounded hover:bg-black/5"
+          aria-label="Drag layer"
         >
-          <GripVertical size={14} className={styles.iconMuted} />
+          <GripVertical size={14} className="text-black/70" />
         </div>
 
         {hasChildren && (
@@ -61,19 +68,20 @@ const SortableLayer: React.FC<{
               e.stopPropagation()
               toggleExpanded(layer.id)
             }}
-            className={styles.dragHandle}
+            className="p-1 rounded hover:bg-black/5"
+            aria-label={isExpanded ? "Collapse layer" : "Expand layer"}
           >
             {isExpanded ? (
-              <ChevronDown size={14} className={styles.iconMuted} />
+              <ChevronDown size={14} className="text-black/70" />
             ) : (
-              <ChevronRight size={14} className={styles.iconMuted} />
+              <ChevronRight size={14} className="text-black/70" />
             )}
           </button>
         )}
 
-        {!hasChildren && <div className={styles.spacer} />}
+        {!hasChildren && <div className="w-4" />}
 
-        <span className={styles.name}>{layer.name || "Untitled Layer"}</span>
+        <span className="text-sm font-semibold tracking-tight">{layer.name || "Untitled Layer"}</span>
       </div>
 
       <AnimatePresence initial={false}>
@@ -83,7 +91,7 @@ const SortableLayer: React.FC<{
             animate={{ height: "auto", opacity: 1, scale: 1 }}
             exit={{ height: 0, opacity: 0, scale: 0.98 }}
             transition={{ duration: 0.22, ease: "easeInOut" }}
-            className={styles.childrenBox}
+            className="ml-5 pl-3 border-l-2 border-black/20 space-y-1"
           >
             {layer.children!.map((child) => (
               <ChildLayer
@@ -112,19 +120,24 @@ const ChildLayer: React.FC<{
   toggleExpanded: (id: string) => void
   selectedIds: Set<string>
 }> = ({ layer, isSelected, onSelect, expandedIds, toggleExpanded, selectedIds }) => {
-  const hasChildren = layer.children && layer.children.length > 0
+  const hasChildren = !!(layer.children && layer.children.length > 0)
   const isExpanded = expandedIds.has(layer.id)
 
   return (
-    <div className={styles.rowWrap}>
+    <div className="mb-1">
       <div
-        className={`${styles.childRow} ${isSelected ? styles.childSelected : styles.childDefault}`}
+        className={[
+          "ml-1 flex items-center gap-2 px-2 py-1.5 rounded-md border-2 shadow-[3px_3px_0_0_#000] transition-all",
+          isSelected
+            ? "bg-red-600 text-white border-black"
+            : "bg-amber-50 text-black border-black hover:-translate-y-0.5",
+        ].join(" ")}
         onClick={(e) => {
           e.stopPropagation()
           onSelect(layer.id)
         }}
       >
-        <div className={styles.spacer} />
+        <div className="w-4" />
 
         {hasChildren && (
           <button
@@ -132,23 +145,24 @@ const ChildLayer: React.FC<{
               e.stopPropagation()
               toggleExpanded(layer.id)
             }}
-            className={styles.dragHandle}
+            className="p-1 rounded hover:bg-black/5"
+            aria-label={isExpanded ? "Collapse layer" : "Expand layer"}
           >
             {isExpanded ? (
-              <ChevronDown size={14} className={styles.iconMuted} />
+              <ChevronDown size={14} className="text-black/70" />
             ) : (
-              <ChevronRight size={14} className={styles.iconMuted} />
+              <ChevronRight size={14} className="text-black/70" />
             )}
           </button>
         )}
 
-        {!hasChildren && <div className={styles.spacer} />}
+        {!hasChildren && <div className="w-4" />}
 
-        <span className={styles.name}>{layer.name || "Untitled Layer"}</span>
+        <span className="text-sm font-semibold tracking-tight">{layer.name || "Untitled Layer"}</span>
       </div>
 
       {hasChildren && isExpanded && (
-  <div className={styles.childrenBox}>
+        <div className="ml-6 pl-3 border-l-2 border-black/20 space-y-1">
           {layer.children!.map((child) => (
             <ChildLayer
               key={child.id}
@@ -196,10 +210,10 @@ const LayersPanel: React.FC<LayersPanelProps> = ({ layers, setLayers, selectedId
   }
 
   return (
-    <div className={styles.panel}>
+    <div className="p-2">
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={layers} strategy={verticalListSortingStrategy}>
-          <div className={styles.listSpace}>
+          <div className="space-y-1">
             {layers.map((layer) => (
               <SortableLayer
                 key={layer.id}

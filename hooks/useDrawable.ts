@@ -39,6 +39,7 @@ export function useDrawable(rawRoots: NodeInput[] | null): {
           width: aw,
           height: ah,
           textContent: text ?? null,
+          children: [],
         });
         const nx = node.absoluteBoundingBox ? 0 : (node.x ?? 0) + px;
         const ny = node.absoluteBoundingBox ? 0 : (node.y ?? 0) + py;

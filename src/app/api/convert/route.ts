@@ -17,6 +17,7 @@ import { buildVue } from "./builders/vue";
 import { buildSvelte } from "./builders/svelte";
 import { buildReactNative } from "./builders/reactNative";
 import { buildFlutter } from "./builders/flutter";
+import { wrapOverflowAsHorizontal } from "./core/tree"; // NEW
 
 function toProjectName(name: string) {
   const out = (name || "figma-project")
@@ -56,7 +57,7 @@ export async function POST(req: NextRequest) {
         const all = flattenTreeToNodes(tree);
         const inside = all.filter(n =>
           rectOverlaps({ x: ref.x, y: ref.y, w: ref.width, h: ref.height },
-                       { x: n.ax, y: n.ay, w: n.w, h: n.h })
+            { x: n.ax, y: n.ay, w: n.w, h: n.h })
         );
         roots = [spatialNestUnder(syntheticRoot, inside)];
       }
@@ -64,8 +65,15 @@ export async function POST(req: NextRequest) {
       roots = tree;
     }
 
+    if (ref && roots.length === 1) {
+      // roots[0] is either the actual reference node or the synthetic root sized to ref
+      wrapOverflowAsHorizontal(roots[0], ref);
+    }
+
     const flatForAssets: Drawable[] = flattenTreeToDrawables(roots);
-    const { imageManifest, imageBlobs, skipped } = await collectAndDownloadImages(flatForAssets);
+  // Pass request origin so image URLs that are site-relative or proxied can be resolved
+  const origin = req.headers.get("origin") || `${req.nextUrl?.protocol || ""}${req.nextUrl?.host || ""}` || undefined;
+  const { imageManifest, imageBlobs, skipped } = await collectAndDownloadImages(flatForAssets, origin);
 
     const zip = new JSZip();
     switch (target) {

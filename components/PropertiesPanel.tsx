@@ -2,22 +2,55 @@
 "use client"
 
 import type React from "react"
-
 import { useRef, useState } from "react"
+import { uploadToMintApi } from "../lib/upload"
 import type { NodeInput } from "../lib/figma-types"
-import { motion } from "framer-motion"
+import { motion, AnimatePresence } from "framer-motion"
 import styles from "./css/PropertiesPanel.module.css"
 
 export default function PropertiesPanel(props: {
   selectedNode: NodeInput | null
   onUpdateSelected: (mut: (n: NodeInput) => void) => void
-  images?: Record<string, string> // optional: map nodeId/name -> URL (for preview sync)
-  onImageChange?: (id: string, url: string) => void // optional callback to sync external caches
+  images?: Record<string, string>
+  onImageChange?: (id: string, url: string) => void
   onClose?: () => void
 }) {
   const { selectedNode, onUpdateSelected, images, onImageChange, onClose } = props
   const fileRef = useRef<HTMLInputElement | null>(null)
   const [localImg, setLocalImg] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [progress, setProgress] = useState<number>(0)
+  const [uploadSuccess, setUploadSuccess] = useState(false)
+  const [showUploadModal, setShowUploadModal] = useState(false)
+  const [dragActive, setDragActive] = useState(false)
+  const [imageFit, setImageFit] = useState<"cover" | "contain" | "fill">("cover")
+  const [imageOpacity, setImageOpacity] = useState(100)
+  const [panelWidth, setPanelWidth] = useState(288) // 18rem = 288px
+  const [isResizing, setIsResizing] = useState(false)
+
+  // Resize functionality
+  const handleResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsResizing(true)
+    const startX = e.clientX
+    const startWidth = panelWidth
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaX = startX - e.clientX // Left border, so we subtract
+      const newWidth = Math.min(Math.max(startWidth + deltaX, 250), 500) // Min 250px, max 500px
+      setPanelWidth(newWidth)
+    }
+
+    const handleMouseUp = () => {
+      setIsResizing(false)
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+  }
 
   if (!selectedNode) return null
 
@@ -31,7 +64,8 @@ export default function PropertiesPanel(props: {
     setLocalImg(url)
     onUpdateSelected((n) => {
       const prev = n.fill && n.fill.type === "IMAGE" ? n.fill : null
-      n.fill = { type: "IMAGE", imageRef: url, ...(prev || {}) } as any
+      // Spread previous first so we can override with new values (avoid reverting imageRef)
+      n.fill = { ...(prev || {}), type: "IMAGE", imageRef: url, fit: imageFit, opacity: imageOpacity / 100 } as any
     })
     if (onImageChange) onImageChange(nodeKey, url)
   }
@@ -39,22 +73,87 @@ export default function PropertiesPanel(props: {
   function clearImage() {
     setLocalImg(null)
     onUpdateSelected((n) => {
-      // Remove image fill; keep other fill types if desired. Here we null it.
       if (n.fill?.type === "IMAGE") n.fill = null
     })
     if (onImageChange) onImageChange(nodeKey, "")
   }
 
-  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
+  async function handleFile(file: File) {
     if (!file) return
-    // Convert to a local preview URL (data URL) for immediate rendering
+
     const reader = new FileReader()
     reader.onload = () => {
       const url = String(reader.result || "")
       if (url) setImageUrl(url)
     }
     reader.readAsDataURL(file)
+
+    setUploading(true)
+    setUploadError(null)
+    setProgress(0)
+    try {
+      // Try proxy endpoint first (avoids CORS)
+      let uploaded = await uploadToMintApi(file, {
+        onProgress: (p: number) => setProgress(p),
+        retries: 1,
+        endpoint: "/api/upload-proxy",
+      })
+      // Fallback to direct (may fail due to CORS but worth trying)
+      if (!uploaded) {
+        uploaded = await uploadToMintApi(file, {
+          onProgress: (p: number) => setProgress(p),
+          retries: 1,
+        })
+      }
+      if (uploaded) {
+        setImageUrl(uploaded)
+        // Show success feedback and close modal immediately
+        setUploadError(null)
+        setUploadSuccess(true)
+        // Close modal after a very brief success indication (200ms)
+        setTimeout(() => {
+          setUploadSuccess(false)
+          setShowUploadModal(false)
+        }, 200)
+      } else {
+        // Only show error if no image is set (we may already have a preview from FileReader)
+  const hasImageNow = Boolean(localImg) || Boolean(currentImage)
+        if (!hasImageNow) {
+          setUploadError("Upload failed - please try again")
+        } else {
+          // If we already show a preview, clear any previous error so users don't see a failure badge
+          setUploadError(null)
+        }
+      }
+    } catch (err: any) {
+      console.error("Upload error:", err)
+      setUploadError(String(err?.message || "Upload failed"))
+    } finally {
+      setUploading(false)
+      setTimeout(() => setProgress(0), 500)
+    }
+  }
+
+  async function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (file) await handleFile(file)
+  }
+
+  async function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault()
+    setDragActive(false)
+    const file = e.dataTransfer.files?.[0]
+    if (file) await handleFile(file)
+  }
+
+  function handleDragOver(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault()
+    setDragActive(true)
+  }
+
+  function handleDragLeave(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault()
+    setDragActive(false)
   }
 
   const hasImageFill = selectedNode.fill?.type === "IMAGE" || Boolean(currentImage)
@@ -70,11 +169,9 @@ export default function PropertiesPanel(props: {
     const [url, setUrl] = useState(initialUrl)
     const [isValid, setIsValid] = useState(true)
 
-    // Validate as URL; allow empty string
     function validate(value: string) {
       if (!value) return true
       try {
-        // Accept http(s) or data:image/...;base64
         if (value.startsWith("data:image/")) return true
         const u = new URL(value)
         return u.protocol === "http:" || u.protocol === "https:"
@@ -87,7 +184,7 @@ export default function PropertiesPanel(props: {
       const v = e.target.value
       setUrl(v)
       setIsValid(validate(v))
-      onPreview(v) // live preview as the user types
+      onPreview(v)
     }
 
     function handleApply() {
@@ -137,10 +234,8 @@ export default function PropertiesPanel(props: {
           </button>
         </div>
 
-        {/* Inline URL preview box */}
         {url ? (
           <div className={styles.inlinePreview}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={url || "/placeholder.svg"}
               alt="URL preview"
@@ -155,278 +250,562 @@ export default function PropertiesPanel(props: {
   }
 
   return (
-    <motion.aside
-      initial={{ opacity: 0, x: 16 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.3, ease: "easeOut" }}
-      style={{
-        width: '18rem',
-        borderLeft: '1px solid rgb(48,48,48)',
-        background: 'rgb(48,48,48)',
-        color: '#fff',
-        padding: '1rem',
-        overflowY: 'auto',
-        minHeight: 0
-      }}
-    >
-      {/* Header */}
-      <div className={styles.header} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div>
-          <div className={styles.title}>Properties</div>
-          <div className={styles.subtle}>{selectedNode.name || selectedNode.id}</div>
-        </div>
-        <button
-          type="button"
-          onClick={() => onClose && onClose()}
-          title="Close"
+    <>
+      <motion.aside
+        initial={{ opacity: 0, x: 16 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.3, ease: "easeOut" }}
+        style={{
+          width: `${panelWidth}px`,
+          borderLeft: '1px solid rgb(48,48,48)',
+          background: 'rgb(48,48,48)',
+          color: '#fff',
+          padding: '1rem',
+          paddingTop: '4rem', // Push down to show reference frame selector
+          overflowY: 'auto',
+          minHeight: 0,
+          position: 'relative',
+          transition: isResizing ? 'none' : 'width 0.1s ease'
+        }}
+      >
+        {/* Resize handle */}
+        <div
+          onMouseDown={handleResizeStart}
           style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            width: 4,
+            height: '100%',
+            cursor: 'col-resize',
             background: 'transparent',
-            border: 'none',
-            color: '#9ca3af',
-            fontSize: 16,
-            lineHeight: 1,
-            padding: 4,
-            cursor: 'pointer',
-            borderRadius: 6
+            zIndex: 10,
+            borderLeft: isResizing ? '2px solid #10b981' : 'none'
           }}
-        >
-          ×
-        </button>
-      </div>
-
-      {/* Size */}
-      <div className={styles.section}>
-        <div className={styles.label}>Size</div>
-        <div className={styles.grid2}>
-          <input
-            type="number"
-            className={`${styles.input} ${styles.number}`}
-            value={selectedNode.width ?? selectedNode.absoluteBoundingBox?.width ?? 0}
-            onChange={(e) => {
-              const w = Number(e.target.value) || 0
-              onUpdateSelected((n) => {
-                if (n.absoluteBoundingBox) n.absoluteBoundingBox.width = w
-                else (n as any).width = w
-              })
-            }}
-          />
-          <input
-            type="number"
-            className={`${styles.input} ${styles.number}`}
-            value={selectedNode.height ?? selectedNode.absoluteBoundingBox?.height ?? 0}
-            onChange={(e) => {
-              const h = Number(e.target.value) || 0
-              onUpdateSelected((n) => {
-                if (n.absoluteBoundingBox) n.absoluteBoundingBox.height = h
-                else (n as any).height = h
-              })
-            }}
-          />
-        </div>
-      </div>
-
-      {/* Image */}
-      <div className={styles.section}>
-        <div className={styles.label}>Image</div>
-
-        {/* URL input with preview */}
-        <ImageUrlField
-          initialUrl={currentImage || ""}
-          onPreview={(u) => setLocalImg(u || null)}
-          onApply={(u) => {
-            if (u && u.trim()) setImageUrl(u.trim())
-          }}
-          onClear={() => clearImage()}
+          title="Drag to resize panel"
         />
-
-        {/* File upload */}
-        <div className={styles.row}>
+        <div className={styles.header} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div className={styles.title}>Properties</div>
+            <div className={styles.subtle}>{selectedNode.name || selectedNode.id}</div>
+          </div>
           <button
             type="button"
-            className={`${styles.btn}`}
-            onClick={() => fileRef.current?.click()}
+            onClick={() => onClose && onClose()}
+            title="Close"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#9ca3af',
+              fontSize: 16,
+              lineHeight: 1,
+              padding: 4,
+              cursor: 'pointer',
+              borderRadius: 6
+            }}
           >
-            Upload File
+            ×
           </button>
-          <span className={styles.hint}>PNG/JPG</span>
         </div>
-        <input ref={fileRef} type="file" accept="image/*" className={styles.hidden} onChange={handleFile} />
 
-        {/* Final preview */}
-        {currentImage && (
-          <div className={styles.finalPreview}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={currentImage || "/placeholder.svg"}
-              alt="Preview"
-              className={styles.imgContain}
-            />
-          </div>
-        )}
-      </div>
-
-      {/* Fill */}
-      <div className={styles.section}>
-        <div className={styles.label}>Fill</div>
-        <input
-          type="color"
-          className={styles.input}
-          value={fillColor || "#ffffff"}
-          disabled={hasImageFill}
-          onChange={(e) =>
-            onUpdateSelected((n) => {
-              n.fill = { type: "SOLID", color: e.target.value }
-            })
-          }
-          title={hasImageFill ? "Remove image to edit solid fill" : "Pick color"}
-        />
-      </div>
-
-      {/* Stroke */}
-      <div className={styles.section}>
-        <div className={styles.label}>Stroke</div>
-        <div className={styles.grid3}>
-          <input
-            type="color"
-            className={styles.input}
-            value={selectedNode.stroke?.color || "#000000"}
-            onChange={(e) =>
-              onUpdateSelected((n) => {
-                n.stroke = { ...(n.stroke || {}), color: e.target.value }
-              })
-            }
-          />
-          <input
-            type="number"
-            min={0}
-            className={styles.input}
-            value={selectedNode.stroke?.weight ?? 1}
-            onChange={(e) =>
-              onUpdateSelected((n) => {
-                n.stroke = { ...(n.stroke || {}), weight: Number(e.target.value) || 0 }
-              })
-            }
-          />
-          <select
-            className={styles.input}
-            value={selectedNode.stroke?.align || "CENTER"}
-            onChange={(e) =>
-              onUpdateSelected((n) => {
-                n.stroke = { ...(n.stroke || {}), align: e.target.value }
-              })
-            }
-          >
-            <option value="INSIDE">Inside</option>
-            <option value="CENTER">Center</option>
-            <option value="OUTSIDE">Outside</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Corners */}
-      <div className={styles.section}>
-        <div className={styles.label}>Corner radius</div>
-        <input
-          type="number"
-          min={0}
-          className={styles.input}
-          value={selectedNode.corners?.uniform ?? 0}
-          onChange={(e) =>
-            onUpdateSelected((n) => {
-              const r = Math.max(0, Number(e.target.value) || 0)
-              n.corners = { ...(n.corners || {}), uniform: r }
-            })
-          }
-        />
-      </div>
-
-      {/* Text */}
-      {selectedNode.text && (
+        {/* Size */}
         <div className={styles.section}>
-          <div className={styles.label}>Text</div>
-          <textarea
-            className={`${styles.textarea}`}
-            rows={3}
-            value={selectedNode.text.characters || ""}
-            onChange={(e) =>
-              onUpdateSelected((n) => {
-                n.text = { ...(n.text || {}), characters: e.target.value }
-              })
-            }
-          />
+          <div className={styles.label}>Size</div>
           <div className={styles.grid2}>
             <input
               type="number"
-              min={1}
-              className={styles.input}
-              value={selectedNode.text.fontSize ?? 12}
-              onChange={(e) =>
+              className={`${styles.input} ${styles.number}`}
+              value={selectedNode.width ?? selectedNode.absoluteBoundingBox?.width ?? 0}
+              onChange={(e) => {
+                const w = Number(e.target.value) || 0
                 onUpdateSelected((n) => {
-                  n.text = { ...(n.text || {}), fontSize: Number(e.target.value) || 12 }
+                  if (n.absoluteBoundingBox) n.absoluteBoundingBox.width = w
+                  else (n as any).width = w
                 })
-              }
+              }}
             />
             <input
-              type="text"
-              className={styles.input}
-              placeholder="Font family"
-              value={selectedNode.text.fontFamily || "system-ui"}
-              onChange={(e) =>
+              type="number"
+              className={`${styles.input} ${styles.number}`}
+              value={selectedNode.height ?? selectedNode.absoluteBoundingBox?.height ?? 0}
+              onChange={(e) => {
+                const h = Number(e.target.value) || 0
                 onUpdateSelected((n) => {
-                  n.text = { ...(n.text || {}), fontFamily: e.target.value }
+                  if (n.absoluteBoundingBox) n.absoluteBoundingBox.height = h
+                  else (n as any).height = h
                 })
-              }
+              }}
             />
           </div>
-          <div className={styles.grid2}>
+        </div>
+
+        {/* Image */}
+        <div className={styles.section}>
+          <div className={styles.label}>Image</div>
+
+          <ImageUrlField
+            initialUrl={currentImage || ""}
+            onPreview={(u) => setLocalImg(u || null)}
+            onApply={(u) => {
+              if (u && u.trim()) setImageUrl(u.trim())
+            }}
+            onClear={() => clearImage()}
+          />
+
+          <div className={styles.row}>
+            <button
+              type="button"
+              className={`${styles.btn} ${styles.btnPrimary}`}
+              onClick={() => setShowUploadModal(true)}
+              style={{ width: '100%', fontSize: 14, fontWeight: 500, textAlign: 'center' , display: 'flex', justifyContent: 'center' }}
+            >
+              📤 Upload Image
+            </button>
+          </div>
+
+          {currentImage && (
+            <>
+              {/* Image Fit Mode */}
+              <div style={{ marginTop: 12 }}>
+                <div className={styles.label} style={{ fontSize: 12, marginBottom: 6 }}>Fit Mode</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+                  <button
+                    type="button"
+                    className={styles.btn}
+                    onClick={() => {
+                      setImageFit("cover")
+                      onUpdateSelected((n) => {
+                        if (n.fill?.type === "IMAGE") (n.fill as any).fit = "cover"
+                      })
+                    }}
+                    style={{
+                      background: imageFit === "cover" ? "#10b981" : "rgba(255,255,255,0.1)",
+                      fontSize: 11,
+                      padding: '6px 8px',
+                      border: 'none',
+                      color: '#fff',
+                      borderRadius: 6,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    Cover
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.btn}
+                    onClick={() => {
+                      setImageFit("contain")
+                      onUpdateSelected((n) => {
+                        if (n.fill?.type === "IMAGE") (n.fill as any).fit = "contain"
+                      })
+                    }}
+                    style={{
+                      background: imageFit === "contain" ? "#10b981" : "rgba(255,255,255,0.1)",
+                      fontSize: 11,
+                      padding: '6px 8px',
+                      border: 'none',
+                      color: '#fff',
+                      borderRadius: 6,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    Contain
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.btn}
+                    onClick={() => {
+                      setImageFit("fill")
+                      onUpdateSelected((n) => {
+                        if (n.fill?.type === "IMAGE") (n.fill as any).fit = "fill"
+                      })
+                    }}
+                    style={{
+                      background: imageFit === "fill" ? "#10b981" : "rgba(255,255,255,0.1)",
+                      fontSize: 11,
+                      padding: '6px 8px',
+                      border: 'none',
+                      color: '#fff',
+                      borderRadius: 6,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    Fill
+                  </button>
+                </div>
+              </div>
+
+              {/* Image Opacity */}
+              <div style={{ marginTop: 12 }}>
+                <div className={styles.label} style={{ fontSize: 12, marginBottom: 6 }}>
+                  Opacity: {imageOpacity}%
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={imageOpacity}
+                  onChange={(e) => {
+                    const val = Number(e.target.value)
+                    setImageOpacity(val)
+                    onUpdateSelected((n) => {
+                      if (n.fill?.type === "IMAGE") (n.fill as any).opacity = val / 100
+                    })
+                  }}
+                  style={{
+                    width: '100%',
+                    accentColor: '#10b981'
+                  }}
+                />
+              </div>
+
+              {/* Preview */}
+              <div className={styles.finalPreview} style={{ position: 'relative', marginTop: 12 }}>
+                <img
+                  src={localImg || currentImage || "/placeholder.svg"}
+                  alt="Preview"
+                  className={styles.imgContain}
+                  style={{ opacity: uploading ? 0.6 : imageOpacity / 100, transition: 'opacity 160ms' }}
+                />
+                {uploading && (
+                  <div style={{ position: 'absolute', left: 8, right: 8, bottom: 8 }}>
+                    <div style={{ height: 6, background: 'rgba(255,255,255,0.12)', borderRadius: 4 }}>
+                      <div style={{ height: '100%', width: `${progress}%`, background: '#10b981', borderRadius: 4, transition: 'width 0.2s' }} />
+                    </div>
+                    <div style={{ color: '#d1fae5', fontSize: 12, marginTop: 6, textAlign: 'center' }}>{progress}%</div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Fill */}
+        <div className={styles.section}>
+          <div className={styles.label}>Fill</div>
+          <input
+            type="color"
+            className={styles.input}
+            value={fillColor || "#ffffff"}
+            disabled={hasImageFill}
+            onChange={(e) =>
+              onUpdateSelected((n) => {
+                n.fill = { type: "SOLID", color: e.target.value }
+              })
+            }
+            title={hasImageFill ? "Remove image to edit solid fill" : "Pick color"}
+          />
+        </div>
+
+        {/* Stroke */}
+        <div className={styles.section}>
+          <div className={styles.label}>Stroke</div>
+          <div className={styles.grid3}>
             <input
               type="color"
               className={styles.input}
-              value={selectedNode.text.color || "#333333"}
+              value={selectedNode.stroke?.color || "#000000"}
               onChange={(e) =>
                 onUpdateSelected((n) => {
-                  n.text = { ...(n.text || {}), color: e.target.value }
+                  n.stroke = { ...(n.stroke || {}), color: e.target.value }
                 })
               }
             />
             <input
               type="number"
               min={0}
-              step={0.1}
               className={styles.input}
-              placeholder="Line height"
-              value={selectedNode.text.lineHeight ?? ""}
+              value={selectedNode.stroke?.weight ?? 1}
               onChange={(e) =>
                 onUpdateSelected((n) => {
-                  const v = e.target.value === "" ? null : Number(e.target.value)
-                  n.text = { ...(n.text || {}), lineHeight: v as any }
+                  n.stroke = { ...(n.stroke || {}), weight: Number(e.target.value) || 0 }
                 })
               }
             />
+            <select
+              className={styles.input}
+              value={selectedNode.stroke?.align || "CENTER"}
+              onChange={(e) =>
+                onUpdateSelected((n) => {
+                  n.stroke = { ...(n.stroke || {}), align: e.target.value }
+                })
+              }
+            >
+              <option value="INSIDE">Inside</option>
+              <option value="CENTER">Center</option>
+              <option value="OUTSIDE">Outside</option>
+            </select>
           </div>
         </div>
-      )}
 
-      {/* Shadow */}
-      <div className={styles.section}>
-        <div className={styles.label}>Shadow</div>
-        <input
-          type="text"
-          className={styles.input}
-          placeholder="e.g. 0px 4px 10px rgba(0,0,0,0.15)"
-          value={selectedNode.effects?.find((e) => e?.boxShadow)?.boxShadow || ""}
-          onChange={(e) =>
-            onUpdateSelected((n) => {
-              const effects = [...(n.effects || [])]
-              const idx = effects.findIndex((x) => x?.boxShadow)
-              const entry = { type: "DROP_SHADOW", boxShadow: e.target.value }
-              if (idx >= 0) effects[idx] = entry as any
-              else effects.push(entry as any)
-              n.effects = effects as any
-            })
-          }
-        />
-      </div>
-    </motion.aside>
+        {/* Corners */}
+        <div className={styles.section}>
+          <div className={styles.label}>Corner radius</div>
+          <input
+            type="number"
+            min={0}
+            className={styles.input}
+            value={selectedNode.corners?.uniform ?? 0}
+            onChange={(e) =>
+              onUpdateSelected((n) => {
+                const r = Math.max(0, Number(e.target.value) || 0)
+                n.corners = { ...(n.corners || {}), uniform: r }
+              })
+            }
+          />
+        </div>
+
+        {/* Text */}
+        {selectedNode.text && (
+          <div className={styles.section}>
+            <div className={styles.label}>Text</div>
+            <textarea
+              className={`${styles.textarea}`}
+              rows={3}
+              value={selectedNode.text.characters || ""}
+              onChange={(e) =>
+                onUpdateSelected((n) => {
+                  n.text = { ...(n.text || {}), characters: e.target.value }
+                })
+              }
+            />
+            <div className={styles.grid2}>
+              <input
+                type="number"
+                min={1}
+                className={styles.input}
+                value={selectedNode.text.fontSize ?? 12}
+                onChange={(e) =>
+                  onUpdateSelected((n) => {
+                    n.text = { ...(n.text || {}), fontSize: Number(e.target.value) || 12 }
+                  })
+                }
+              />
+              <input
+                type="text"
+                className={styles.input}
+                placeholder="Font family"
+                value={selectedNode.text.fontFamily || "system-ui"}
+                onChange={(e) =>
+                  onUpdateSelected((n) => {
+                    n.text = { ...(n.text || {}), fontFamily: e.target.value }
+                  })
+                }
+              />
+            </div>
+            <div className={styles.grid2}>
+              <input
+                type="color"
+                className={styles.input}
+                value={selectedNode.text.color || "#333333"}
+                onChange={(e) =>
+                  onUpdateSelected((n) => {
+                    n.text = { ...(n.text || {}), color: e.target.value }
+                  })
+                }
+              />
+              <input
+                type="number"
+                min={0}
+                step={0.1}
+                className={styles.input}
+                placeholder="Line height"
+                value={selectedNode.text.lineHeight ?? ""}
+                onChange={(e) =>
+                  onUpdateSelected((n) => {
+                    const v = e.target.value === "" ? null : Number(e.target.value)
+                    n.text = { ...(n.text || {}), lineHeight: v as any }
+                  })
+                }
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Shadow */}
+        <div className={styles.section}>
+          <div className={styles.label}>Shadow</div>
+          <input
+            type="text"
+            className={styles.input}
+            placeholder="e.g. 0px 4px 10px rgba(0,0,0,0.15)"
+            value={selectedNode.effects?.find((e) => e?.boxShadow)?.boxShadow || ""}
+            onChange={(e) =>
+              onUpdateSelected((n) => {
+                const effects = [...(n.effects || [])]
+                const idx = effects.findIndex((x) => x?.boxShadow)
+                const entry = { type: "DROP_SHADOW", boxShadow: e.target.value }
+                if (idx >= 0) effects[idx] = entry as any
+                else effects.push(entry as any)
+                n.effects = effects as any
+              })
+            }
+          />
+        </div>
+      </motion.aside>
+
+      {/* Upload Modal */}
+      <AnimatePresence>
+        {showUploadModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0,0,0,0.7)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1000,
+              backdropFilter: 'blur(4px)'
+            }}
+            onClick={() => !uploading && setShowUploadModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                background: 'rgb(32,32,32)',
+                borderRadius: 16,
+                padding: 32,
+                maxWidth: 480,
+                width: '90%',
+                boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+                border: '1px solid rgba(255,255,255,0.1)'
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <h2 style={{ margin: 0, fontSize: 24, fontWeight: 600 }}>Upload Image</h2>
+                {!uploading && (
+                  <button
+                    onClick={() => setShowUploadModal(false)}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#9ca3af',
+                      fontSize: 24,
+                      cursor: 'pointer',
+                      padding: 4,
+                      lineHeight: 1
+                    }}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+              <p style={{ margin: '0 0 24px', color: '#9ca3af', fontSize: 14 }}>
+                Drop your image here or click to browse. Accepted formats: PNG, JPG, GIF, WebP
+              </p>
+
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={handleFileInput}
+              />
+
+              <div
+                onDrop={handleDrop}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onClick={() => !uploading && fileRef.current?.click()}
+                style={{
+                  border: dragActive ? '3px dashed #10b981' : '2px dashed rgba(255,255,255,0.2)',
+                  borderRadius: 12,
+                  padding: 48,
+                  textAlign: 'center',
+                  cursor: uploading ? 'wait' : 'pointer',
+                  background: dragActive ? 'rgba(16,185,129,0.1)' : 'rgba(255,255,255,0.03)',
+                  transition: 'all 0.2s',
+                  minHeight: 200,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <div style={{ fontSize: 48, marginBottom: 16 }}>
+                  {uploading ? '⏳' : dragActive ? '📥' : '🖼️'}
+                </div>
+                {uploading ? (
+                  <>
+                    <div style={{ color: '#10b981', fontSize: 16, fontWeight: 500, marginBottom: 16 }}>
+                      Uploading to server...
+                    </div>
+                    <div style={{ width: '100%', maxWidth: 300, marginBottom: 12 }}>
+                      <div style={{ height: 8, background: 'rgba(255,255,255,0.1)', borderRadius: 4, overflow: 'hidden' }}>
+                        <div
+                          style={{
+                            height: '100%',
+                            width: `${progress}%`,
+                            background: 'linear-gradient(90deg, #10b981, #059669)',
+                            borderRadius: 4,
+                            transition: 'width 0.3s ease'
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div style={{ color: '#d1fae5', fontSize: 14, fontWeight: 500 }}>
+                      {progress}%
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ color: '#fff', fontSize: 16, marginBottom: 8 }}>
+                      {dragActive ? 'Drop it here!' : 'Drag & drop your image'}
+                    </div>
+                    <div style={{ color: '#9ca3af', fontSize: 14 }}>
+                      or click to browse files
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {uploadError && (
+                <div
+                  style={{
+                    marginTop: 16,
+                    padding: 12,
+                    background: 'rgba(239,68,68,0.1)',
+                    border: '1px solid rgba(239,68,68,0.3)',
+                    borderRadius: 8,
+                    color: '#fca5a5',
+                    fontSize: 14
+                  }}
+                >
+                  ⚠️ {uploadError}
+                </div>
+              )}
+
+              {uploadSuccess && (
+                <div
+                  style={{
+                    marginTop: 16,
+                    padding: 12,
+                    background: 'rgba(16,185,129,0.08)',
+                    border: '1px solid rgba(16,185,129,0.2)',
+                    borderRadius: 8,
+                    color: '#bbf7d0',
+                    fontSize: 14
+                  }}
+                >
+                  ✅ Upload successful
+                </div>
+              )}
+
+             
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   )
 }

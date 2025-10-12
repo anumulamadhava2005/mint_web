@@ -18,7 +18,8 @@ function safeFileSlug(name: string) {
 function tinyHash(s: string) { let h = 2166136261 >>> 0; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16).slice(0, 8); }
 function atobSafe(b64: string) { if (typeof atob === "function") return atob(b64); return Buffer.from(b64, "base64").toString("binary"); }
 
-export async function collectAndDownloadImages(drawables: Drawable[]) {
+export async function collectAndDownloadImages(drawables: Drawable[], baseUrl?: string) {
+  // baseUrl: optional origin (e.g. https://example.com) used to resolve relative or proxied URLs
   const imageNodes = drawables.filter((d) => d.fill?.type === "IMAGE" && d.fill.imageRef);
   const unique = new Map<string, true>();
   const manifest = new Map<string, string>();
@@ -34,8 +35,36 @@ export async function collectAndDownloadImages(drawables: Drawable[]) {
     if (/^data:image\//i.test(refUrl)) { manifest.set(refUrl, refUrl); continue; }
 
     try {
-      const res = await fetch(refUrl, { headers: { Accept: "image/*" } });
-      if (!res.ok) { skipped.push({ refUrl, reason: `HTTP ${res.status}` }); continue; }
+      // Try a few candidate URLs in order to handle:
+      // - absolute http(s) URLs (refUrl)
+      // - protocol-relative URLs (//cdn.example.com/..)
+      // - site-relative URLs (/api/image-proxy?url=...)
+      const candidates: string[] = [];
+      // original as-is first
+      candidates.push(refUrl);
+      // protocol-relative
+      if (refUrl.startsWith("//")) candidates.push("https:" + refUrl);
+      // site-relative or relative (requires baseUrl to be provided)
+      if (baseUrl) {
+        const base = baseUrl.replace(/\/$/, "");
+        if (refUrl.startsWith("/")) candidates.push(base + refUrl);
+        else if (!/^https?:\/\//i.test(refUrl)) candidates.push(base + "/" + refUrl);
+      }
+
+      let res: Response | null = null;
+      let lastErr: any = null;
+      for (const c of candidates) {
+        try {
+          res = await fetch(c, { headers: { Accept: "image/*" } });
+          if (res && res.ok) { break; }
+          // if non-ok, keep trying other candidates
+          lastErr = `HTTP ${res?.status}`;
+        } catch (err) {
+          lastErr = err;
+          res = null;
+        }
+      }
+      if (!res || !res.ok) { skipped.push({ refUrl, reason: String(lastErr || "failed to fetch") }); continue; }
       const ct = (res.headers.get("content-type") || "").toLowerCase();
       if (!ct.startsWith("image/")) { skipped.push({ refUrl, reason: `non-image content-type: ${ct || "unknown"}` }); continue; }
       const buf = await res.arrayBuffer();

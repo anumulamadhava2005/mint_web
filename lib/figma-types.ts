@@ -4,6 +4,8 @@ export type FillStyle =
       color?: string;
       stops?: Array<{ position: number; color: string }>;
       imageRef?: string | null;
+      fit?: "cover" | "contain" | "fill" | null;
+      opacity?: number | null;
     }
   | null;
 
