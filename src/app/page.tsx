@@ -647,7 +647,11 @@ function HomePage() {
 
   return (
     <div className={styles.root}>
+<<<<<<< HEAD
       {loading && <Spinner />}
+=======
+      {loading && !rawRoots && !user && <Spinner />}
+>>>>>>> origin/adhish1
       
       {/* Toolbar - Top bar with dark theme */}
       <div className={styles.toolbarBar}>
