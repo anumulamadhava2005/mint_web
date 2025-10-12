@@ -58,12 +58,8 @@ export function drawNodes(
   scale: number,
   selectedIds: Set<string>,
   transientOffsets: Map<string, { dx: number; dy: number }>,
-<<<<<<< HEAD
-  rawRoots: NodeInput[] | null
-=======
   rawRoots: NodeInput[] | null,
   hoveredId?: string | null
->>>>>>> origin/adhish1
 ) {
   // Helper to find the raw node by id
   function findRaw(id: string) {
@@ -78,8 +74,6 @@ export function drawNodes(
     return undefined;
   }
 
-<<<<<<< HEAD
-=======
   // Helper to get all child IDs of a node
   function getChildIds(nodeId: string): Set<string> {
     const childIds = new Set<string>();
@@ -102,7 +96,6 @@ export function drawNodes(
     return !!(rawNode && rawNode.children && rawNode.children.length > 0);
   }
 
->>>>>>> origin/adhish1
   // Simple word-wrap helper
   function wrapAndDrawText(
     ctx2: CanvasRenderingContext2D,
@@ -232,32 +225,14 @@ export function drawNodes(
         if (rawNode?.stroke) {
           ctx.stroke();
         } else {
-<<<<<<< HEAD
-          // Default subtle outline for all shapes without explicit stroke
-          ctx.save();
-          ctx.strokeStyle = "rgba(0,0,0,0.6)";
-          ctx.lineWidth = 1; // screen-space hairline
-          ctx.setLineDash([]);
-          ctx.stroke();
-          ctx.restore();
-=======
           // No default outline - remove black borders
->>>>>>> origin/adhish1
         }
       } else {
         ctx.fillRect(x, y, w, h);
         if (rawNode?.stroke) {
           ctx.strokeRect(x, y, w, h);
         } else {
-<<<<<<< HEAD
-          // Default subtle outline for all shapes without explicit stroke
-          ctx.save();
-          ctx.strokeStyle = "rgba(0,0,0,0.6)";
-          ctx.lineWidth = 1; // screen-space hairline
-          ctx.setLineDash([]);
-=======
           // No default outline - remove black borders
->>>>>>> origin/adhish1
           ctx.strokeRect(x, y, w, h);
           ctx.restore();
         }
@@ -270,14 +245,6 @@ export function drawNodes(
     ctx.shadowBlur = 0;
     ctx.setLineDash([]);
 
-<<<<<<< HEAD
-    // --- Selection outline ---
-    if (selectedIds.has(n.id)) {
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = "#2563eb"; // hyperlink-like dark blue
-      ctx.setLineDash([]); // solid outline
-      ctx.strokeRect(x, y, w, h);
-=======
     // --- Selection and Hover outlines ---
     if (selectedIds.has(n.id)) {
       ctx.lineWidth = 2; // Much thicker for better visibility
@@ -313,7 +280,6 @@ export function drawNodes(
         ctx.strokeRect(x, y, w, h);
         ctx.setLineDash([]); // reset
       }
->>>>>>> origin/adhish1
     }
 
     // --- Text rendering ---

@@ -1,3 +1,6 @@
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+"use client"
 import {  useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -486,8 +489,6 @@ export default function ModernToolbar(props: ToolbarProps) {
     </>
   );
 }
-/* eslint-disable @typescript-eslint/no-explicit-any */
-"use client"
 
 import Image from "next/image"
 import { useState } from "react"

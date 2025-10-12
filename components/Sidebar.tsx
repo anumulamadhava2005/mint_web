@@ -5,10 +5,7 @@ import { useState } from "react"
 import LayersPanel from "./LayersPanel"
 import SectionDropdown from "./SectionDropdown"
 import type { NodeInput } from "../lib/figma-types"
-<<<<<<< HEAD
-=======
 import { Menu } from "lucide-react"
->>>>>>> origin/adhish1
 
 export default function Sidebar(props: {
   rawRoots: NodeInput[] | null
@@ -24,28 +21,6 @@ export default function Sidebar(props: {
   const filteredNodes = (rawRoots ?? []).filter((node) => node.name?.toLowerCase().includes(filter.toLowerCase()))
 
   return (
-<<<<<<< HEAD
-    <aside className="w-[240px] flex flex-col min-h-0 overflow-hidden border-4 border-black bg-stone-50 text-black shadow-[8px_8px_0_0_#000]">
-      {/* Pages Section Header */}
-      <div className="px-3 py-2 border-b-4 border-black bg-red-600 text-white flex items-center justify-between">
-        <span className="text-[11px] font-extrabold uppercase tracking-wider">Pages</span>
-      </div>
-
-      {/* Pages Dropdown */}
-      <div className="px-3 py-2 border-b-2 border-black/70">
-        <SectionDropdown rawRoots={rawRoots} selectedId={selectedFrameId} setSelectedId={setSelectedFrameId} />
-      </div>
-
-      {/* Search Section */}
-
-      {/* Layers Heading */}
-      <div className="px-3 py-2 flex items-center justify-between border-b-4 border-black bg-amber-400">
-        <span className="text-[11px] font-extrabold uppercase tracking-wider">Layers</span>
-      </div>
-
-      {/* Layers Panel - Scrollable */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden p-2">
-=======
     <aside 
       className="w-[240px] flex flex-col min-h-0 overflow-hidden border-r border-gray-800 -mt-px" 
       style={{ backgroundColor: 'rgb(45,45,45)' }}
@@ -91,7 +66,6 @@ export default function Sidebar(props: {
 
       {/* Layers Panel - Scrollable */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar">
->>>>>>> origin/adhish1
         <LayersPanel
           layers={filteredNodes}
           setLayers={(layers) => setRawRoots(layers as any)}
@@ -99,11 +73,6 @@ export default function Sidebar(props: {
           setSelectedIds={setSelectedIds}
         />
       </div>
-<<<<<<< HEAD
-    </aside>
-  )
-}
-=======
 
       <style jsx>{`
         .custom-scrollbar::-webkit-scrollbar {
@@ -123,4 +92,3 @@ export default function Sidebar(props: {
     </aside>
   )
 }
->>>>>>> origin/adhish1

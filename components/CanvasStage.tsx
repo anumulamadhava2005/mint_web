@@ -39,8 +39,6 @@ export default function CanvasStage(props: {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const overlayRef = useRef<HTMLCanvasElement | null>(null)
   const [viewportSize, setViewportSize] = useState({ width: 1280, height: 800 })
-<<<<<<< HEAD
-=======
   
   // Refs to track current scale and offset for smooth zoom
   const scaleRef = useRef(scale)
@@ -51,7 +49,6 @@ export default function CanvasStage(props: {
     scaleRef.current = scale
     offsetRef.current = offset
   }, [scale, offset])
->>>>>>> origin/adhish1
 
   const keysRef = useRef({ ctrl: false, meta: false, shift: false, space: false })
   type Mode = "idle" | "pan" | "marquee" | "drag" | "click"
@@ -65,10 +62,7 @@ export default function CanvasStage(props: {
   const dragStartWorld = useRef<{ wx: number; wy: number } | null>(null)
   const originalPositions = useRef<Map<string, { x: number; y: number }>>(new Map())
   const dragOffsetsRef = useRef<Map<string, { dx: number; dy: number }>>(new Map())
-<<<<<<< HEAD
-=======
   const [hoveredId, setHoveredId] = useState<string | null>(null)
->>>>>>> origin/adhish1
   const [tick, setTick] = useState(0)
 
   const SNAP = 10
@@ -88,16 +82,9 @@ export default function CanvasStage(props: {
       if (e.key === "Shift") keysRef.current.shift = true
       if (e.key === " ") {
         keysRef.current.space = true
-<<<<<<< HEAD
-        // Only prevent default if not typing in an input/textarea
-        const target = e.target as HTMLElement
-        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
-          return // Allow normal space behavior in text inputs
-=======
         const target = e.target as HTMLElement
         if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
           return
->>>>>>> origin/adhish1
         }
         e.preventDefault()
       }
@@ -108,16 +95,9 @@ export default function CanvasStage(props: {
       if (e.key === "Shift") keysRef.current.shift = false
       if (e.key === " ") {
         keysRef.current.space = false
-<<<<<<< HEAD
-        // Only prevent default if not typing in an input/textarea
-        const target = e.target as HTMLElement
-        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
-          return // Allow normal space behavior in text inputs
-=======
         const target = e.target as HTMLElement
         if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
           return
->>>>>>> origin/adhish1
         }
         e.preventDefault()
       }
@@ -136,26 +116,6 @@ export default function CanvasStage(props: {
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
-<<<<<<< HEAD
-      const rect = target.getBoundingClientRect()
-      const cx = e.clientX - rect.left
-      const cy = e.clientY - rect.top
-      let delta = Math.max(-100, Math.min(100, e.deltaY))
-      const zoomFactor = Math.exp(-delta * 0.002)
-      let next = scale * zoomFactor
-      next = Math.max(0.05, Math.min(10, next))
-      const wx = (cx - offset.x) / scale
-      const wy = (cy - offset.y) / scale
-      const nx = cx - wx * next
-      const ny = cy - wy * next
-      setScale(next)
-      setOffset({ x: nx, y: ny })
-    }
-
-    target.addEventListener("wheel", onWheel, { passive: false })
-    return () => target.removeEventListener("wheel", onWheel)
-  }, [scale, offset, setScale, setOffset])
-=======
       
       const rect = target.getBoundingClientRect()
       const mouseX = e.clientX - rect.left
@@ -215,7 +175,6 @@ export default function CanvasStage(props: {
       target.removeEventListener("wheel", onWheel)
     }
   }, [])
->>>>>>> origin/adhish1
 
   const mergedImages = useMemo(() => {
     const out: ImageMap = { ...(images || {}) }
@@ -223,10 +182,6 @@ export default function CanvasStage(props: {
       const walk = (node: any) => {
         if (node?.fill?.type === "IMAGE" && typeof node.fill.imageRef === "string") {
           let imageUrl = node.fill.imageRef
-<<<<<<< HEAD
-          // Proxy external URLs to avoid CORS
-=======
->>>>>>> origin/adhish1
           if (imageUrl.startsWith('http') && !imageUrl.includes(window.location.hostname)) {
             imageUrl = `/api/image-proxy?url=${encodeURIComponent(imageUrl)}`
           }
@@ -342,8 +297,6 @@ export default function CanvasStage(props: {
       }
       lastPointer.current = { x: e.clientX, y: e.clientY }
 
-<<<<<<< HEAD
-=======
       if (modeRef.current === "idle") {
         const { wx, wy } = toWorld(e.clientX, e.clientY)
         let hitId: string | null = null
@@ -357,7 +310,6 @@ export default function CanvasStage(props: {
         setHoveredId(hitId)
       }
 
->>>>>>> origin/adhish1
       if (modeRef.current === "pan") {
         setOffset((o: any) => ({ x: o.x + e.movementX, y: o.y + e.movementY }))
         return
@@ -461,22 +413,14 @@ export default function CanvasStage(props: {
     const octx = overlay.getContext("2d")!
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, viewportSize.width, viewportSize.height)
-<<<<<<< HEAD
-    ctx.fillStyle = "#ffffff"
-=======
     ctx.fillStyle = "rgba(236, 231, 231, 1)"
->>>>>>> origin/adhish1
     ctx.fillRect(0, 0, viewportSize.width, viewportSize.height)
 
     if (!drawableNodes || drawableNodes.length === 0) {
       drawGrid(ctx, viewportSize.width, viewportSize.height, offset, scale, 100, 20)
     }
     
-<<<<<<< HEAD
-    drawNodes(ctx, drawableNodes, offset, scale, selectedIds, dragOffsetsRef.current, rawRoots || null)
-=======
     drawNodes(ctx, drawableNodes, offset, scale, selectedIds, dragOffsetsRef.current, rawRoots || null, hoveredId)
->>>>>>> origin/adhish1
 
     for (const n of drawableNodes) {
       let nodeData: any = null
@@ -600,11 +544,7 @@ export default function CanvasStage(props: {
     }
 
     if (selectedFrame) drawReferenceFrameOverlay(octx, selectedFrame, offset, scale)
-<<<<<<< HEAD
-  }, [drawableNodes, viewportSize, offset, scale, selectedIds, isMarquee, tick, rawRoots, selectedFrame, loadedImages])
-=======
   }, [drawableNodes, viewportSize, offset, scale, selectedIds, isMarquee, tick, rawRoots, selectedFrame, loadedImages, hoveredId])
->>>>>>> origin/adhish1
 
   return (
     <div className={styles.root} style={{ cursor: isPanning ? "grabbing" : "default" }}>
@@ -617,10 +557,6 @@ export default function CanvasStage(props: {
 function useImageMap(map: ImageMap) {
   const [state, setState] = useState<Record<string, HTMLImageElement>>({})
 
-<<<<<<< HEAD
-  // Build a lightweight key that changes when any src changes (handles HTMLImageElement or string)
-=======
->>>>>>> origin/adhish1
   const mapKey = useMemo(() =>
     Object.entries(map)
       .map(([k, v]) => `${k}:${typeof v === "string" ? v : (v && (v as HTMLImageElement).src) ?? ""}`)
@@ -657,10 +593,6 @@ function useImageMap(map: ImageMap) {
       }
 
       const src = val as string
-<<<<<<< HEAD
-      // Reuse an existing loaded image with same src if present to avoid unnecessary reloads
-=======
->>>>>>> origin/adhish1
       const existing = Object.values(state).find((i) => i.src === src)
       if (existing && existing.complete) {
         next[key] = existing
@@ -669,10 +601,6 @@ function useImageMap(map: ImageMap) {
 
       const img = new Image()
       pending++
-<<<<<<< HEAD
-      // try to avoid tainting canvas when possible
-=======
->>>>>>> origin/adhish1
       try {
         img.crossOrigin = "anonymous"
       } catch {}
