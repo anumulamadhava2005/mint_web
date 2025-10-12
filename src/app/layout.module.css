@@ -1,0 +1,13 @@
+.htmlFull {
+  height: 100%;
+}
+
+.body {
+  height: 100%;
+  font-family: var(--font-roboto), Arial, Helvetica, sans-serif;
+}
+
+.full {
+  height: 100%;
+}
+

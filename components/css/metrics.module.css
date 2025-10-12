@@ -1,0 +1,14 @@
+.grid {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: 1.5rem;
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+}
+@media (min-width: 768px) { .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.cell { text-align: center; }
+.value { font-size: 1.875rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.label { font-size: 0.875rem; color: var(--muted-foreground); }
+

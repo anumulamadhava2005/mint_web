@@ -1,0 +1,44 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  background: #0f172a; /* gray-950 */
+  color: #ffffff;
+  overflow: hidden;
+}
+
+.toolbarBar {
+  background: #111827; /* gray-900 */
+  /* border-bottom removed to avoid extra strip */
+  flex-shrink: 0;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+}
+
+.main {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  padding-top: 6px;
+}
+
+.center {
+  flex: 1 1 auto;
+  background: #111827;
+  overflow: hidden;
+  position: relative;
+}
+
+.error {
+  background: rgba(127, 29, 29, 0.2);
+  border-bottom: 1px solid rgba(127, 29, 29, 0.3);
+  color: #fca5a5;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+}
+

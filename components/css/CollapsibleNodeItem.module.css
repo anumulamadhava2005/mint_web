@@ -1,0 +1,8 @@
+.item { padding: 0.25rem 0.5rem; cursor: pointer; border-radius: 0.375rem; font-size: 0.75rem; display: flex; align-items: center; gap: 0.5rem; }
+.itemDefault { background: transparent; }
+.itemHover:hover { background: var(--muted); }
+.itemSelected { background: var(--primary); color: var(--primary-foreground); font-weight: 500; }
+.twist { transition: transform 150ms ease; display: inline-block; }
+.name { flex: 1 1 auto; min-width: 0; color: var(--foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.children { padding-left: 1rem; border-left: 1px solid var(--border); }
+
