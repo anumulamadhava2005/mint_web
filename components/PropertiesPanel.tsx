@@ -30,6 +30,12 @@ export default function PropertiesPanel(props: {
   const [panelWidth, setPanelWidth] = useState(288) // 18rem = 288px
   const [isResizing, setIsResizing] = useState(false)
 
+  // Image manipulation states
+  const [imageManipulationMode, setImageManipulationMode] = useState<'select' | 'resize' | 'crop' | null>(null)
+  const [imageSelected, setImageSelected] = useState(false)
+  const [imageResize, setImageResize] = useState({ width: 100, height: 100, maintainAspectRatio: true })
+  const [imageCrop, setImageCrop] = useState({ x: 0, y: 0, width: 100, height: 100 })
+
   // Resize functionality
   const handleResizeStart = (e: React.MouseEvent) => {
     e.preventDefault()
@@ -116,6 +122,14 @@ export default function PropertiesPanel(props: {
       n.fill = { ...(prev || {}), type: "IMAGE", imageRef: url, fit: imageFit, opacity: imageOpacity / 100 } as any
     })
     if (onImageChange) onImageChange(nodeKey, url)
+
+    // Initialize resize dimensions when new image is set
+    const img = new Image()
+    img.onload = () => {
+      setImageResize({ width: img.width, height: img.height, maintainAspectRatio: true })
+      setImageCrop({ x: 0, y: 0, width: img.width, height: img.height })
+    }
+    img.src = url
   }
 
   function clearImage() {
@@ -258,6 +272,12 @@ export default function PropertiesPanel(props: {
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             title="Enter a valid http(s) URL or a data:image URL"
+            style={{
+              backgroundColor: '#f8f9fa',
+              color: '#000000',
+              border: '1px solid #ddd',
+              borderRadius: '4px'
+            }}
           />
           <button
             type="button"
@@ -288,7 +308,23 @@ export default function PropertiesPanel(props: {
               src={url || "/placeholder.svg"}
               alt="URL preview"
               className={styles.imgContain}
-              onError={() => setIsValid(false)}
+              onError={(e) => {
+                setIsValid(false)
+                // Show a placeholder for failed images
+                const target = e.target as HTMLImageElement
+                const canvas = document.createElement('canvas')
+                canvas.width = 100
+                canvas.height = 100
+                const ctx = canvas.getContext('2d')!
+                ctx.fillStyle = '#f0f0f0'
+                ctx.fillRect(0, 0, 100, 100)
+                ctx.fillStyle = '#999'
+                ctx.font = '10px Arial'
+                ctx.textAlign = 'center'
+                ctx.fillText('Preview failed', 50, 40)
+                ctx.fillText('to load', 50, 60)
+                target.src = canvas.toDataURL()
+              }}
               onLoad={() => setIsValid(true)}
             />
           </div>
@@ -306,10 +342,10 @@ export default function PropertiesPanel(props: {
         style={{
           width: `${panelWidth}px`,
           borderLeft: '1px solid rgb(60,60,60)',
-          background: 'rgb(60,60,60)',
+          background: 'rgba(48, 47, 47, 1)',
           color: '#fff',
           padding: '1rem',
-          paddingTop: '4rem', // Push down to show reference frame selector
+          paddingTop: '2rem', // Push down to show reference frame selector
           overflowY: 'auto',
           minHeight: 0,
           position: 'relative',
@@ -392,6 +428,12 @@ export default function PropertiesPanel(props: {
                   else (n as any).width = w
                 })
               }}
+              style={{
+                backgroundColor: '#f8f9fa',
+                color: '#000000',
+                border: '1px solid #ddd',
+                borderRadius: '4px'
+              }}
             />
             <input
               type="number"
@@ -403,6 +445,12 @@ export default function PropertiesPanel(props: {
                   if (n.absoluteBoundingBox) n.absoluteBoundingBox.height = h
                   else (n as any).height = h
                 })
+              }}
+              style={{
+                backgroundColor: '#f8f9fa',
+                color: '#000000',
+                border: '1px solid #ddd',
+                borderRadius: '4px'
               }}
             />
           </div>
@@ -434,6 +482,285 @@ export default function PropertiesPanel(props: {
 
           {currentImage && (
             <>
+              {/* Image Manipulation Tools */}
+              <div style={{ marginTop: 12 }}>
+                <div className={styles.label} style={{ fontSize: 12, marginBottom: 6 }}>Image Tools</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+                  <button
+                    type="button"
+                    className={styles.btn}
+                    onClick={() => {
+                      setImageManipulationMode(imageManipulationMode === 'select' ? null : 'select')
+                      setImageSelected(!imageSelected)
+                    }}
+                    style={{
+                      background: imageManipulationMode === 'select' ? '#10b981' : 'rgba(255,255,255,0.1)',
+                      fontSize: 11,
+                      padding: '6px 8px',
+                      border: 'none',
+                      color: '#fff',
+                      borderRadius: 6,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    {imageSelected ? '✅ Selected' : '👆 Select'}
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.btn}
+                    onClick={() => setImageManipulationMode(imageManipulationMode === 'resize' ? null : 'resize')}
+                    style={{
+                      background: imageManipulationMode === 'resize' ? '#10b981' : 'rgba(255,255,255,0.1)',
+                      fontSize: 11,
+                      padding: '6px 8px',
+                      border: 'none',
+                      color: '#fff',
+                      borderRadius: 6,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    📏 Resize
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.btn}
+                    onClick={() => setImageManipulationMode(imageManipulationMode === 'crop' ? null : 'crop')}
+                    style={{
+                      background: imageManipulationMode === 'crop' ? '#10b981' : 'rgba(255,255,255,0.1)',
+                      fontSize: 11,
+                      padding: '6px 8px',
+                      border: 'none',
+                      color: '#fff',
+                      borderRadius: 6,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    ✂️ Crop
+                  </button>
+                </div>
+              </div>
+
+              {/* Resize Controls */}
+              {imageManipulationMode === 'resize' && (
+                <div style={{ marginTop: 12, padding: 12, background: 'rgba(255,255,255,0.05)', borderRadius: 6 }}>
+                  <div className={styles.label} style={{ fontSize: 12, marginBottom: 8 }}>Resize Image</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <div>
+                      <label style={{ fontSize: 11, color: '#9ca3af', display: 'block', marginBottom: 4 }}>Width</label>
+                      <input
+                        type="number"
+                        value={imageResize.width}
+                        onChange={(e) => {
+                          const newWidth = Number(e.target.value)
+                          setImageResize(prev => ({
+                            ...prev,
+                            width: newWidth,
+                            height: prev.maintainAspectRatio ? Math.round(newWidth * (prev.height / prev.width)) : prev.height
+                          }))
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '4px 8px',
+                          backgroundColor: '#f8f9fa',
+                          color: '#000000',
+                          border: '1px solid #ddd',
+                          borderRadius: '4px',
+                          fontSize: 12
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, color: '#9ca3af', display: 'block', marginBottom: 4 }}>Height</label>
+                      <input
+                        type="number"
+                        value={imageResize.height}
+                        onChange={(e) => {
+                          const newHeight = Number(e.target.value)
+                          setImageResize(prev => ({
+                            ...prev,
+                            height: newHeight,
+                            width: prev.maintainAspectRatio ? Math.round(newHeight * (prev.width / prev.height)) : prev.width
+                          }))
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '4px 8px',
+                          backgroundColor: '#f8f9fa',
+                          color: '#000000',
+                          border: '1px solid #ddd',
+                          borderRadius: '4px',
+                          fontSize: 12
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 8 }}>
+                    <label style={{ fontSize: 11, color: '#9ca3af', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <input
+                        type="checkbox"
+                        checked={imageResize.maintainAspectRatio}
+                        onChange={(e) => setImageResize(prev => ({ ...prev, maintainAspectRatio: e.target.checked }))}
+                      />
+                      Maintain aspect ratio
+                    </label>
+                  </div>
+                  <div style={{ marginTop: 8, display: 'flex', gap: 6 }}>
+                    <button
+                      onClick={() => {
+                        // Apply resize
+                        onUpdateSelected((n) => {
+                          if (n.fill?.type === "IMAGE") {
+                            (n.fill as any).resize = imageResize
+                          }
+                        })
+                      }}
+                      style={{
+                        padding: '4px 12px',
+                        background: '#10b981',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: 4,
+                        fontSize: 11,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Apply
+                    </button>
+                    <button
+                      onClick={() => setImageManipulationMode(null)}
+                      style={{
+                        padding: '4px 12px',
+                        background: 'rgba(255,255,255,0.1)',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: 4,
+                        fontSize: 11,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Crop Controls */}
+              {imageManipulationMode === 'crop' && (
+                <div style={{ marginTop: 12, padding: 12, background: 'rgba(255,255,255,0.05)', borderRadius: 6 }}>
+                  <div className={styles.label} style={{ fontSize: 12, marginBottom: 8 }}>Crop Image</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <div>
+                      <label style={{ fontSize: 11, color: '#9ca3af', display: 'block', marginBottom: 4 }}>X Position</label>
+                      <input
+                        type="number"
+                        value={imageCrop.x}
+                        onChange={(e) => setImageCrop(prev => ({ ...prev, x: Number(e.target.value) }))}
+                        style={{
+                          width: '100%',
+                          padding: '4px 8px',
+                          backgroundColor: '#f8f9fa',
+                          color: '#000000',
+                          border: '1px solid #ddd',
+                          borderRadius: '4px',
+                          fontSize: 12
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, color: '#9ca3af', display: 'block', marginBottom: 4 }}>Y Position</label>
+                      <input
+                        type="number"
+                        value={imageCrop.y}
+                        onChange={(e) => setImageCrop(prev => ({ ...prev, y: Number(e.target.value) }))}
+                        style={{
+                          width: '100%',
+                          padding: '4px 8px',
+                          backgroundColor: '#f8f9fa',
+                          color: '#000000',
+                          border: '1px solid #ddd',
+                          borderRadius: '4px',
+                          fontSize: 12
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, color: '#9ca3af', display: 'block', marginBottom: 4 }}>Width</label>
+                      <input
+                        type="number"
+                        value={imageCrop.width}
+                        onChange={(e) => setImageCrop(prev => ({ ...prev, width: Number(e.target.value) }))}
+                        style={{
+                          width: '100%',
+                          padding: '4px 8px',
+                          backgroundColor: '#f8f9fa',
+                          color: '#000000',
+                          border: '1px solid #ddd',
+                          borderRadius: '4px',
+                          fontSize: 12
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, color: '#9ca3af', display: 'block', marginBottom: 4 }}>Height</label>
+                      <input
+                        type="number"
+                        value={imageCrop.height}
+                        onChange={(e) => setImageCrop(prev => ({ ...prev, height: Number(e.target.value) }))}
+                        style={{
+                          width: '100%',
+                          padding: '4px 8px',
+                          backgroundColor: '#f8f9fa',
+                          color: '#000000',
+                          border: '1px solid #ddd',
+                          borderRadius: '4px',
+                          fontSize: 12
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 8, display: 'flex', gap: 6 }}>
+                    <button
+                      onClick={() => {
+                        // Apply crop
+                        onUpdateSelected((n) => {
+                          if (n.fill?.type === "IMAGE") {
+                            (n.fill as any).crop = imageCrop
+                          }
+                        })
+                      }}
+                      style={{
+                        padding: '4px 12px',
+                        background: '#10b981',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: 4,
+                        fontSize: 11,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Apply
+                    </button>
+                    <button
+                      onClick={() => setImageManipulationMode(null)}
+                      style={{
+                        padding: '4px 12px',
+                        background: 'rgba(255,255,255,0.1)',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: 4,
+                        fontSize: 11,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Image Fit Mode */}
               <div style={{ marginTop: 12 }}>
                 <div className={styles.label} style={{ fontSize: 12, marginBottom: 6 }}>Fit Mode</div>
@@ -537,8 +864,31 @@ export default function PropertiesPanel(props: {
                   src={localImg || currentImage || "/placeholder.svg"}
                   alt="Preview"
                   className={styles.imgContain}
-                  style={{ opacity: uploading ? 0.6 : imageOpacity / 100, transition: 'opacity 160ms' }}
+                  style={{
+                    opacity: uploading ? 0.6 : imageOpacity / 100,
+                    transition: 'opacity 160ms',
+                    border: imageSelected ? '3px solid #10b981' : 'none',
+                    borderRadius: imageSelected ? '4px' : '0'
+                  }}
                 />
+                {imageSelected && (
+                  <div style={{
+                    position: 'absolute',
+                    top: -8,
+                    right: -8,
+                    background: '#10b981',
+                    color: '#fff',
+                    borderRadius: '50%',
+                    width: 24,
+                    height: 24,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 12
+                  }}>
+                    ✓
+                  </div>
+                )}
                 {uploading && (
                   <div style={{ position: 'absolute', left: 8, right: 8, bottom: 8 }}>
                     <div style={{ height: 6, background: 'rgba(255,255,255,0.12)', borderRadius: 4 }}>
@@ -593,6 +943,12 @@ export default function PropertiesPanel(props: {
                   n.stroke = { ...(n.stroke || {}), weight: Number(e.target.value) || 0 }
                 })
               }
+              style={{
+                backgroundColor: '#f8f9fa',
+                color: '#000000',
+                border: '1px solid #ddd',
+                borderRadius: '4px'
+              }}
             />
             <select
               className={styles.input}
@@ -624,6 +980,12 @@ export default function PropertiesPanel(props: {
                 n.corners = { ...(n.corners || {}), uniform: r }
               })
             }
+            style={{
+              backgroundColor: '#f8f9fa',
+              color: '#000000',
+              border: '1px solid #ddd',
+              borderRadius: '4px'
+            }}
           />
         </div>
 
@@ -640,6 +1002,12 @@ export default function PropertiesPanel(props: {
                   n.text = { ...(n.text || {}), characters: e.target.value }
                 })
               }
+              style={{
+                backgroundColor: '#f8f9fa',
+                color: '#000000',
+                border: '1px solid #ddd',
+                borderRadius: '4px'
+              }}
             />
             <div className={styles.grid2}>
               <input
@@ -652,6 +1020,12 @@ export default function PropertiesPanel(props: {
                     n.text = { ...(n.text || {}), fontSize: Number(e.target.value) || 12 }
                   })
                 }
+                style={{
+                  backgroundColor: '#f8f9fa',
+                  color: '#000000',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px'
+                }}
               />
               <input
                 type="text"
@@ -663,6 +1037,12 @@ export default function PropertiesPanel(props: {
                     n.text = { ...(n.text || {}), fontFamily: e.target.value }
                   })
                 }
+                style={{
+                  backgroundColor: '#f8f9fa',
+                  color: '#000000',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px'
+                }}
               />
             </div>
             <div className={styles.grid2}>
@@ -689,6 +1069,12 @@ export default function PropertiesPanel(props: {
                     n.text = { ...(n.text || {}), lineHeight: v as any }
                   })
                 }
+                style={{
+                  backgroundColor: '#f8f9fa',
+                  color: '#000000',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px'
+                }}
               />
             </div>
           </div>
@@ -712,6 +1098,12 @@ export default function PropertiesPanel(props: {
                 n.effects = effects as any
               })
             }
+            style={{
+              backgroundColor: '#f8f9fa',
+              color: '#000000',
+              border: '1px solid #ddd',
+              borderRadius: '4px'
+            }}
           />
         </div>
       </motion.aside>

@@ -323,6 +323,99 @@ export default function CanvasStage(props: {
         }
       }
 
+      // If no node was hit, check if we're clicking on an image that extends beyond node bounds
+      if (!hitId) {
+        for (let i = drawableNodes.length - 1; i >= 0; i--) {
+          const n = drawableNodes[i]
+          // Find the raw node to check if it has an image
+          let nodeData: any = null
+          if (rawRoots) {
+            const findNode = (node: any): any => {
+              if (node.id === n.id) return node
+              if (node.children) {
+                for (const child of node.children) {
+                  const found = findNode(child)
+                  if (found) return found
+                }
+              }
+              return null
+            }
+            for (const root of rawRoots) {
+              const found = findNode(root)
+              if (found) {
+                nodeData = found
+                break
+              }
+            }
+          }
+
+          if (nodeData?.fill?.type === "IMAGE") {
+            const img = loadedImages[n.id] || loadedImages[n.name]
+            if (img && img.complete && img.naturalWidth && img.naturalHeight) {
+              // Calculate image bounds based on fit mode
+              const x = n.x
+              const y = n.y
+              const w = n.width
+              const h = n.height
+
+              let imageBounds = { x, y, w, h }
+
+              const fitMode = nodeData.fill?.fit || "cover"
+              if (fitMode === "cover") {
+                const ir = img.naturalWidth / img.naturalHeight
+                const br = w / h
+                if (ir > br) {
+                  const newH = h
+                  const newW = h * ir
+                  imageBounds = {
+                    x: x + (w - newW) / 2,
+                    y: y,
+                    w: newW,
+                    h: newH
+                  }
+                } else {
+                  const newW = w
+                  const newH = w / ir
+                  imageBounds = {
+                    x: x,
+                    y: y + (h - newH) / 2,
+                    w: newW,
+                    h: newH
+                  }
+                }
+              } else if (fitMode === "contain") {
+                const ir = img.naturalWidth / img.naturalHeight
+                const br = w / h
+                if (ir > br) {
+                  const newW = w
+                  const newH = w / ir
+                  imageBounds = {
+                    x: x,
+                    y: y + (h - newH) / 2,
+                    w: newW,
+                    h: newH
+                  }
+                } else {
+                  const newH = h
+                  const newW = h * ir
+                  imageBounds = {
+                    x: x + (w - newW) / 2,
+                    y: y,
+                    w: newW,
+                    h: newH
+                  }
+                }
+              }
+
+              if (pointInRect(wx, wy, imageBounds)) {
+                hitId = n.id
+                break
+              }
+            }
+          }
+        }
+      }
+
       if (hitId) {
         modeRef.current = "click";
         dragStartWorld.current = { wx, wy };
