@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import {  useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ZoomIn,
@@ -490,13 +490,11 @@ export default function ModernToolbar(props: ToolbarProps) {
 "use client"
 
 import Image from "next/image"
-import type { ReferenceFrame } from "../lib/figma-types"
 import { useState } from "react"
-import { motion, AnimatePresence } from "framer-motion"
 
 type FrameOption = ReferenceFrame
 
-export default function Toolbar(props: {
+export function Toolbar(props: {
   onNavigateProjects?: () => void;
   user: any
   onConnect: () => void
