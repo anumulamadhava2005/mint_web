@@ -3,7 +3,7 @@
 import JSZip from "jszip";
 import { NextRequest, NextResponse } from "next/server";
 import {
-  Payload, ReferenceFrame, DrawableNode, Drawable,
+  Payload, ReferenceFrame, DrawableNode, Drawable, Interaction,
 } from "./core/types";
 import {
   buildDrawableTree, findById, flattenTreeToNodes,
@@ -46,6 +46,11 @@ export async function POST(req: NextRequest) {
     const nodes = Array.isArray(body.nodes) ? body.nodes : [];
     const ref = body.referenceFrame ?? null;
 
+    // NEW: get interactions from payload (if any)
+    const incomingInteractions: Interaction[] = Array.isArray((body as any).interactions)
+      ? ((body as any).interactions as Interaction[])
+      : [];
+
     const tree = buildDrawableTree(nodes, ref ? ref.x : 0, ref ? ref.y : 0);
     let roots: DrawableNode[];
     if (ref) {
@@ -71,14 +76,38 @@ export async function POST(req: NextRequest) {
     }
 
     const flatForAssets: Drawable[] = flattenTreeToDrawables(roots);
-  // Pass request origin so image URLs that are site-relative or proxied can be resolved
-  const origin = req.headers.get("origin") || `${req.nextUrl?.protocol || ""}${req.nextUrl?.host || ""}` || undefined;
+
+    // NEW: validate and filter interactions against exported roots
+    const allowedIds = new Set(flattenTreeToNodes(roots).map((n) => n.id));
+    const filteredInteractions = incomingInteractions.filter(
+      (it) => allowedIds.has(it.sourceId) && allowedIds.has(it.targetId)
+    );
+    // NEW: dedupe interactions (same source+target+type+trigger+animation.name)
+    const seen = new Set<string>();
+    const uniqueInteractions = filteredInteractions.filter((it) => {
+      const key = [
+        it.sourceId,
+        it.targetId,
+        it.type,
+        it.trigger,
+        it.animation?.name || "none",
+        it.animation?.direction || "-",
+        it.animation?.durationMs || 0,
+        it.animation?.easing || "ease-in-out",
+      ].join("|");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    // Pass request origin so image URLs that are site-relative or proxied can be resolved
+    const origin = req.headers.get("origin") || `${req.nextUrl?.protocol || ""}${req.nextUrl?.host || ""}` || undefined;
   const { imageManifest, imageBlobs, skipped } = await collectAndDownloadImages(flatForAssets, origin);
 
     const zip = new JSZip();
     switch (target) {
       case "nextjs":
-        buildNext(zip, fileName, roots, ref, imageManifest, imageBlobs);
+        buildNext(zip, fileName, roots, ref, imageManifest, imageBlobs, { interactions: uniqueInteractions });
         break;
       case "react":
         buildReactVite(zip, fileName, roots, ref, imageManifest, imageBlobs);
@@ -99,6 +128,16 @@ export async function POST(req: NextRequest) {
       default:
         return new NextResponse(`Unsupported target: ${target}`, { status: 400 });
     }
+
+    // NEW: include interactions file for builders/runtime to consume
+    zip.file(
+      "interactions.json",
+      JSON.stringify(
+        { schema: "mint/interactions@v1", count: uniqueInteractions.length, interactions: uniqueInteractions },
+        null,
+        2
+      )
+    );
 
     const report =
       imageManifest.size > 0

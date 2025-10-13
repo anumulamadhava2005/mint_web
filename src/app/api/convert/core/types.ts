@@ -99,5 +99,25 @@ export type DrawableNode = {
 };
 
 export type ReferenceFrame = { id: string; x: number; y: number; width: number; height: number };
-export type Payload = { target: string; fileName: string; nodes: NodeInput[]; referenceFrame?: ReferenceFrame | null };
+export type Interaction = {
+  id: string;
+  sourceId: string;
+  targetId: string;
+  type: "navigation" | "animation";
+  trigger: "onClick" | "onTap";
+  animation?: {
+    name: "none" | "fade" | "slide" | "zoom";
+    durationMs?: number;
+    easing?: "linear" | "ease-in" | "ease-out" | "ease-in-out";
+    direction?: "left" | "right" | "up" | "down";
+  };
+};
+
+export type Payload = {
+  target: string;
+  fileName: string;
+  nodes: NodeInput[];
+  referenceFrame?: ReferenceFrame | null;
+  interactions?: Interaction[];
+};
 export type Rect = { x: number; y: number; w: number; h: number };
