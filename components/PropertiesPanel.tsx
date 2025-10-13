@@ -14,8 +14,9 @@ export default function PropertiesPanel(props: {
   images?: Record<string, string>
   onImageChange?: (id: string, url: string) => void
   onClose?: () => void
+  onDelete?: (node: NodeInput) => void
 }) {
-  const { selectedNode, onUpdateSelected, images, onImageChange, onClose } = props
+  const { selectedNode, onUpdateSelected, images, onImageChange, onClose, onDelete } = props
   const fileRef = useRef<HTMLInputElement | null>(null)
   const [localImg, setLocalImg] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -52,7 +53,54 @@ export default function PropertiesPanel(props: {
     document.addEventListener('mouseup', handleMouseUp)
   }
 
-  if (!selectedNode) return null
+  if (!selectedNode) {
+    return (
+      <motion.aside
+        initial={{ opacity: 0, x: 16 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.3, ease: "easeOut" }}
+        style={{
+          width: `${panelWidth}px`,
+          borderLeft: '1px solid rgb(60,60,60)',
+          background: 'rgb(60,60,60)',
+          color: '#fff',
+          padding: '1rem',
+          paddingTop: '4rem',
+          overflowY: 'auto',
+          minHeight: 0,
+          position: 'relative',
+          transition: isResizing ? 'none' : 'width 0.1s ease'
+        }}
+      >
+        <div className={styles.header} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div className={styles.title}>Properties</div>
+            <div className={styles.subtle}>No component selected</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => onClose && onClose()}
+            title="Close"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#9ca3af',
+              fontSize: 16,
+              lineHeight: 1,
+              padding: 4,
+              cursor: 'pointer',
+              borderRadius: 6
+            }}
+          >
+            ×
+          </button>
+        </div>
+        <div style={{ padding: '2rem', textAlign: 'center', color: '#9ca3af' }}>
+          Select a component to view its properties
+        </div>
+      </motion.aside>
+    )
+  }
 
   const nodeKey = selectedNode.id || selectedNode.name
   const currentImage =
@@ -257,13 +305,8 @@ export default function PropertiesPanel(props: {
         transition={{ duration: 0.3, ease: "easeOut" }}
         style={{
           width: `${panelWidth}px`,
-<<<<<<< HEAD
-          borderLeft: '1px solid rgb(48,48,48)',
-          background: 'rgb(48,48,48)',
-=======
           borderLeft: '1px solid rgb(60,60,60)',
           background: 'rgb(60,60,60)',
->>>>>>> origin/adhish1
           color: '#fff',
           padding: '1rem',
           paddingTop: '4rem', // Push down to show reference frame selector
@@ -294,23 +337,44 @@ export default function PropertiesPanel(props: {
             <div className={styles.title}>Properties</div>
             <div className={styles.subtle}>{selectedNode.name || selectedNode.id}</div>
           </div>
-          <button
-            type="button"
-            onClick={() => onClose && onClose()}
-            title="Close"
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: '#9ca3af',
-              fontSize: 16,
-              lineHeight: 1,
-              padding: 4,
-              cursor: 'pointer',
-              borderRadius: 6
-            }}
-          >
-            ×
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {onDelete && (
+              <button
+                type="button"
+                onClick={() => selectedNode && onDelete(selectedNode)}
+                title="Delete component"
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#ef4444',
+                  fontSize: 16,
+                  lineHeight: 1,
+                  padding: 4,
+                  cursor: 'pointer',
+                  borderRadius: 6
+                }}
+              >
+                🗑️
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => onClose && onClose()}
+              title="Close"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#9ca3af',
+                fontSize: 16,
+                lineHeight: 1,
+                padding: 4,
+                cursor: 'pointer',
+                borderRadius: 6
+              }}
+            >
+              ×
+            </button>
+          </div>
         </div>
 
         {/* Size */}

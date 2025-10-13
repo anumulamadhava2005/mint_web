@@ -48,6 +48,27 @@ export function drawGrid(
     ctx.lineTo(width, sy);
   }
   ctx.stroke();
+
+  // Center lines in light purple
+  ctx.strokeStyle = "rgba(147, 51, 234, 0.3)"; // light purple
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  
+  // Vertical center line (x = 0)
+  if (worldMinX <= 0 && worldMaxX >= 0) {
+    const sx = offset.x + 0 * scale;
+    ctx.moveTo(sx, 0);
+    ctx.lineTo(sx, height);
+  }
+  
+  // Horizontal center line (y = 0)
+  if (worldMinY <= 0 && worldMaxY >= 0) {
+    const sy = offset.y + 0 * scale;
+    ctx.moveTo(0, sy);
+    ctx.lineTo(width, sy);
+  }
+  
+  ctx.stroke();
 }
 
 // Nodes
@@ -247,8 +268,8 @@ export function drawNodes(
 
     // --- Selection and Hover outlines ---
     if (selectedIds.has(n.id)) {
-      ctx.lineWidth = 2; // Much thicker for better visibility
-      ctx.strokeStyle = "#1e40af"; // darker blue for better visibility
+      ctx.lineWidth = 1.5; // Thinner border for cleaner look
+      ctx.strokeStyle = "#60a5fa"; // light blue for selection
       ctx.setLineDash([]); // solid outline
       ctx.strokeRect(x, y, w, h);
     } else if (hoveredId) {

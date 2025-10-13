@@ -63,6 +63,7 @@ function HomePage() {
   const [user, setUser] = useState<any>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [rawRoots, setRawRoots] = useState<NodeInput[] | null>(null);
+  const [originalRawRoots, setOriginalRawRoots] = useState<NodeInput[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -77,7 +78,7 @@ function HomePage() {
   // State persistence helpers
   const saveStateToStorage = useCallback((state: Partial<{
     fileName: string | null;
-    rawRoots: NodeInput[] | null;
+    originalRawRoots: NodeInput[] | null;
     selectedIds: string[];
     selectedFrameId: string;
     images: Record<string, string>;
@@ -260,6 +261,7 @@ function HomePage() {
         if (project.id === projectId) {
           setFileName(project.name);
           setRawRoots(project.rawRoots);
+          setOriginalRawRoots(project.rawRoots);
           setLastFileKey(project.fileKey);
           setFitPending(true);
           return;
@@ -274,6 +276,7 @@ function HomePage() {
     if (project && project.id === projectId) {
       setFileName(project.name);
       setRawRoots(project.rawRoots);
+      setOriginalRawRoots(project.rawRoots);
       setLastFileKey(project.fileKey);
       setFitPending(true);
     }
@@ -301,7 +304,10 @@ function HomePage() {
     const savedState = loadStateFromStorage();
     if (savedState) {
       if (savedState.fileName) setFileName(savedState.fileName);
-      if (savedState.rawRoots) setRawRoots(savedState.rawRoots);
+      if (savedState.originalRawRoots) {
+        setRawRoots(savedState.originalRawRoots);
+        setOriginalRawRoots(savedState.originalRawRoots);
+      }
       if (savedState.selectedIds && Array.isArray(savedState.selectedIds)) {
         setSelectedIds(new Set(savedState.selectedIds));
       }
@@ -323,7 +329,7 @@ function HomePage() {
 
   // Save state on changes
   useEffect(() => {
-    if (rawRoots || fileName || Object.keys(images).length > 0) {
+    if (originalRawRoots || fileName || Object.keys(images).length > 0) {
       // Convert images to serializable format (only strings)
       const serializableImages: Record<string, string> = {};
       Object.entries(images).forEach(([key, value]) => {
@@ -332,7 +338,7 @@ function HomePage() {
       
       saveStateToStorage({
         fileName,
-        rawRoots,
+        originalRawRoots,
         selectedIds: Array.from(selectedIds),
         selectedFrameId,
         images: serializableImages,
@@ -340,7 +346,7 @@ function HomePage() {
         offset
       });
     }
-  }, [rawRoots, fileName, selectedIds, selectedFrameId, images, scale, offset, saveStateToStorage]);
+  }, [originalRawRoots, fileName, selectedIds, selectedFrameId, images, scale, offset, saveStateToStorage]);
 
   async function onFetch(fileUrlOrKey: string) {
     setError(null);
@@ -397,6 +403,7 @@ function HomePage() {
         setLastFileKey(null);
       } else {
         setRawRoots(roots);
+        setOriginalRawRoots(roots);
         setSelectedIds(new Set());
         setFitPending(true);
         setLastFileKey(fileKey ?? key);

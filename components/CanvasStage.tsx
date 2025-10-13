@@ -1,13 +1,55 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import styles from "./css/CanvasStage.module.css"
 import type { DrawableNode, NodeInput, ReferenceFrame } from "../lib/figma-types"
 import { drawGrid, drawNodes, drawReferenceFrameOverlay } from "../lib/ccanvas-draw-bridge"
 
+// Type Definitions
 type ImageLike = HTMLImageElement | string
 type ImageMap = Record<string, ImageLike>
+
+// Helper Functions
+const rectsIntersect = (
+  a: { x: number; y: number; w: number; h: number },
+  b: { x: number; y: number; w: number; h: number },
+) => !(a.x + a.w < b.x || b.x + b.w < a.x || a.y + a.h < b.y || b.y + b.h < a.y)
+
+// OPTIMIZATION: More performant way to update node positions than structuredClone
+const updateNodePositions = (nodes: NodeInput[], moved: Map<string, { dx: number, dy: number }>): NodeInput[] => {
+  return nodes.map(node => {
+    let hasChanged = false
+    const offsets = moved.get(node.id)
+
+    const newChildren = node.children ? updateNodePositions(node.children, moved) : undefined;
+    if (newChildren !== node.children) { // Pointer comparison
+      hasChanged = true
+    }
+
+    if (offsets) {
+      hasChanged = true
+      const oldBB = node.absoluteBoundingBox ?? { x: 0, y: 0, width: 0, height: 0 }
+      const newBoundingBox = {
+        x: (oldBB.x ?? 0) + offsets.dx,
+        y: (oldBB.y ?? 0) + offsets.dy,
+        width: oldBB.width ?? 0,
+        height: oldBB.height ?? 0,
+      }
+      
+      if (hasChanged) {
+        return { ...node, absoluteBoundingBox: newBoundingBox, children: newChildren }
+      }
+    }
+
+    if (hasChanged) {
+      return { ...node, children: newChildren };
+    }
+
+    return node
+  })
+}
+
 
 export default function CanvasStage(props: {
   rawRoots: NodeInput[] | null
@@ -34,520 +76,422 @@ export default function CanvasStage(props: {
     setOffset,
     selectedFrame,
     images = {},
-  }: any = props
+  } = props
 
-  const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const overlayRef = useRef<HTMLCanvasElement | null>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const overlayRef = useRef<HTMLCanvasElement>(null)
   const [viewportSize, setViewportSize] = useState({ width: 1280, height: 800 })
-  
-  // Refs to track current scale and offset for smooth zoom
-  const scaleRef = useRef(scale)
-  const offsetRef = useRef(offset)
-  
-  // Update refs when state changes
+
+  const stateRef = useRef({
+    scale,
+    offset,
+    selectedIds,
+    isPanning: false,
+    isMarquee: false,
+    hoveredId: null as string | null,
+    alignmentGuides: { verticalLines: [] as any[], horizontalLines: [] as any[] },
+    drawableNodes,
+    rawRoots,
+  })
+
   useEffect(() => {
-    scaleRef.current = scale
-    offsetRef.current = offset
-  }, [scale, offset])
+    stateRef.current = { ...stateRef.current, scale, offset, selectedIds, drawableNodes, rawRoots }
+  }, [scale, offset, selectedIds, drawableNodes, rawRoots])
 
   const keysRef = useRef({ ctrl: false, meta: false, shift: false, space: false })
   type Mode = "idle" | "pan" | "marquee" | "drag" | "click"
   const modeRef = useRef<Mode>("idle")
-  const [isPanning, setIsPanning] = useState(false)
-  const [isMarquee, setIsMarquee] = useState(false)
-  const lastPointer = useRef<{ x: number; y: number } | null>(null)
-  const marqueeStart = useRef<{ wx: number; wy: number } | null>(null)
-  const downScreenRef = useRef<{ x: number; y: number } | null>(null)
 
+  const lastPointer = useRef<{ x: number; y: number } | null>(null)
+  const downScreenRef = useRef<{ x: number; y: number } | null>(null)
+  const marqueeStart = useRef<{ wx: number; wy: number } | null>(null)
   const dragStartWorld = useRef<{ wx: number; wy: number } | null>(null)
   const originalPositions = useRef<Map<string, { x: number; y: number }>>(new Map())
   const dragOffsetsRef = useRef<Map<string, { dx: number; dy: number }>>(new Map())
-  const [hoveredId, setHoveredId] = useState<string | null>(null)
-  const [tick, setTick] = useState(0)
+  const framePendingRef = useRef(false)
 
-  const SNAP = 10
-  const CLICK_DRAG_SLOP = 4
+  // Image Loading
+  const mergedImages = useMemo(() => {
+    const out: ImageMap = { ...(images || {}) }
+    if (rawRoots) {
+      const walk = (node: any) => {
+        if (node?.fill?.type === "IMAGE" && typeof node.fill.imageRef === "string") {
+            let imageUrl = node.fill.imageRef;
+            if (imageUrl.startsWith('http') && !imageUrl.includes(window.location.hostname)) {
+                imageUrl = `/api/image-proxy?url=${encodeURIComponent(imageUrl)}`;
+            }
+            out[node.id] = imageUrl;
+            if (node.name) out[node.name] = imageUrl;
+        }
+        node.children?.forEach(walk);
+      }
+      rawRoots.forEach(walk)
+    }
+    return out
+  }, [images, rawRoots])
+  const loadedImages = useImageMap(mergedImages)
+  
+  const { nodeMap, childToParentMap } = useMemo(() => {
+    const nodeMap = new Map<string, DrawableNode & { raw: NodeInput }>()
+    const childToParentMap = new Map<string, string>()
+    if (!rawRoots) return { nodeMap, childToParentMap }
+
+    const walk = (node: NodeInput, parentId: string | null = null) => {
+      const drawable = drawableNodes.find(d => d.id === node.id)
+      if (drawable) {
+        nodeMap.set(node.id, { ...drawable, raw: node })
+      }
+      if (parentId) {
+        childToParentMap.set(node.id, parentId)
+      }
+      node.children?.forEach(child => walk(child, node.id))
+    }
+    rawRoots.forEach(root => walk(root))
+    return { nodeMap, childToParentMap }
+  }, [rawRoots, drawableNodes])
+  
+  const ALIGNMENT_THRESHOLD = 8
+  const CLICK_DRAG_SLOP = 2
+
+  const toWorld = useCallback((clientX: number, clientY: number) => {
+    const rect = canvasRef.current!.getBoundingClientRect()
+    const { scale, offset } = stateRef.current
+    const sx = clientX - rect.left
+    const sy = clientY - rect.top
+    const wx = (sx - offset.x) / scale
+    const wy = (sy - offset.y) / scale
+    return { wx, wy, sx, sy }
+  }, [])
+
+  const requestRedraw = useCallback(() => {
+    if (framePendingRef.current) return
+    framePendingRef.current = true
+    
+    requestAnimationFrame(() => {
+      framePendingRef.current = false
+      const canvas = canvasRef.current
+      const overlay = overlayRef.current
+      const ctx = canvas?.getContext("2d")
+      const octx = overlay?.getContext("2d")
+      if (!canvas || !overlay || !ctx || !octx) return
+
+      const { scale, offset, selectedIds, isMarquee, hoveredId, alignmentGuides, drawableNodes: currentDrawableNodes } = stateRef.current
+      const dpr = window.devicePixelRatio || 1
+      
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      octx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      octx.clearRect(0, 0, overlay.width, overlay.height)
+      ctx.fillStyle = "rgba(236, 231, 231, 1)"
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+      if (currentDrawableNodes.length === 0) {
+        drawGrid(ctx, viewportSize.width, viewportSize.height, offset, scale, 100, 20)
+      }
+      
+      // OPTIMIZATION: Consolidated drawing logic now lives in drawNodes
+      drawNodes(ctx, currentDrawableNodes, offset, scale, selectedIds, dragOffsetsRef.current, rawRoots, hoveredId)
+
+      if (isMarquee && marqueeStart.current && lastPointer.current) {
+        const s1x = offset.x + marqueeStart.current.wx * scale
+        const s1y = offset.y + marqueeStart.current.wy * scale
+        const rect = overlay.getBoundingClientRect()
+        const s2x = lastPointer.current.x - rect.left
+        const s2y = lastPointer.current.y - rect.top
+        const mx = Math.min(s1x, s2x), my = Math.min(s1y, s2y)
+        const mw = Math.abs(s2x - s1x), mh = Math.abs(s2y - s1y)
+        octx.fillStyle = "rgba(16, 185, 129, 0.12)"; octx.strokeStyle = "#10b981";
+        octx.lineWidth = 1.5; octx.fillRect(mx, my, mw, mh); octx.strokeRect(mx, my, mw, mh);
+      }
+
+      if (selectedFrame) drawReferenceFrameOverlay(octx, selectedFrame, offset, scale)
+
+      if (alignmentGuides.verticalLines.length > 0 || alignmentGuides.horizontalLines.length > 0) {
+        octx.strokeStyle = "rgba(147, 51, 234, 0.8)"; octx.lineWidth = 1; // Finer line
+        octx.setLineDash([2, 3]); octx.beginPath();
+        alignmentGuides.verticalLines.forEach(guide => {
+          const sx = offset.x + guide.x * scale; octx.moveTo(sx, 0); octx.lineTo(sx, viewportSize.height);
+        });
+        alignmentGuides.horizontalLines.forEach(guide => {
+          const sy = offset.y + guide.y * scale; octx.moveTo(0, sy); octx.lineTo(viewportSize.width, sy);
+        });
+        octx.stroke(); octx.setLineDash([]);
+      }
+    })
+  }, [viewportSize, selectedFrame, rawRoots, nodeMap, loadedImages])
 
   useEffect(() => {
-    const update = () => setViewportSize({ width: window.innerWidth, height: window.innerHeight })
-    update()
-    window.addEventListener("resize", update, { passive: true })
-    return () => window.removeEventListener("resize", update)
-  }, [])
+    const handleResize = () => {
+      const w = window.innerWidth, h = window.innerHeight;
+      setViewportSize({ width: w, height: h });
+      const dpr = window.devicePixelRatio || 1;
+      [canvasRef.current, overlayRef.current].forEach(c => {
+        if (!c) return;
+        c.style.width = `${w}px`; c.style.height = `${h}px`;
+        c.width = Math.floor(w * dpr); c.height = Math.floor(h * dpr);
+      });
+      requestRedraw();
+    };
+    window.addEventListener("resize", handleResize, { passive: true });
+    handleResize();
+    return () => window.removeEventListener("resize", handleResize);
+  }, [requestRedraw]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Control") keysRef.current.ctrl = true
-      if (e.key === "Meta") keysRef.current.meta = true
-      if (e.key === "Shift") keysRef.current.shift = true
+      if (e.key === "Control") keysRef.current.ctrl = true;
+      if (e.key === "Meta") keysRef.current.meta = true;
+      if (e.key === "Shift") keysRef.current.shift = true;
       if (e.key === " ") {
-        keysRef.current.space = true
-        const target = e.target as HTMLElement
-        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
-          return
+        const target = e.target as HTMLElement;
+        if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') {
+          e.preventDefault();
+          keysRef.current.space = true;
         }
-        e.preventDefault()
       }
-    }
+    };
     const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key === "Control") keysRef.current.ctrl = false
-      if (e.key === "Meta") keysRef.current.meta = false
-      if (e.key === "Shift") keysRef.current.shift = false
-      if (e.key === " ") {
-        keysRef.current.space = false
-        const target = e.target as HTMLElement
-        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
-          return
-        }
-        e.preventDefault()
-      }
-    }
-    window.addEventListener("keydown", onKeyDown)
-    window.addEventListener("keyup", onKeyUp)
+      if (e.key === "Control") keysRef.current.ctrl = false;
+      if (e.key === "Meta") keysRef.current.meta = false;
+      if (e.key === "Shift") keysRef.current.shift = false;
+      if (e.key === " ") keysRef.current.space = false;
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
     return () => {
-      window.removeEventListener("keydown", onKeyDown)
-      window.removeEventListener("keyup", onKeyUp)
-    }
-  }, [])
-
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, []);
+  
+  // FIX: Simplified and reliable wheel handler
   useEffect(() => {
-    const target = overlayRef.current || canvasRef.current
-    if (!target) return
-
+    const target = overlayRef.current;
+    if (!target) return;
+    
     const onWheel = (e: WheelEvent) => {
-      e.preventDefault()
-      
-      const rect = target.getBoundingClientRect()
-      const mouseX = e.clientX - rect.left
-      const mouseY = e.clientY - rect.top
+      e.preventDefault();
+      const rect = target.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      const { scale: currentScale, offset: currentOffset } = stateRef.current;
 
-      const currentScale = scaleRef.current
-      const currentOffset = offsetRef.current
-
-      // Detect gesture type
-      const isCtrlZoom = e.ctrlKey || e.metaKey
-      const absX = Math.abs(e.deltaX)
-      const absY = Math.abs(e.deltaY)
-      
-      // Pinch zoom: both X and Y are significant (trackpad pinch gesture)
-      // Only trigger if BOTH axes have meaningful movement
-      const isTrackpadPinch = absX > 15 && absY > 15 && e.deltaMode === 0 && absX > absY * 0.5 && absY > absX * 0.5
-      
-      if (isCtrlZoom) {
-        // Ctrl+scroll zoom
-        const delta = -e.deltaY
-        const zoomFactor = Math.exp(delta * 0.008)
-        const newScale = Math.max(0.05, Math.min(20, currentScale * zoomFactor))
-        
-        const worldX = (mouseX - currentOffset.x) / currentScale
-        const worldY = (mouseY - currentOffset.y) / currentScale
-        
-        const newOffsetX = mouseX - worldX * newScale
-        const newOffsetY = mouseY - worldY * newScale
-        
-        setScale(newScale)
-        setOffset({ x: newOffsetX, y: newOffsetY })
-      } else if (isTrackpadPinch) {
-        // Trackpad pinch zoom using deltaX
-        const delta = e.deltaX
-        const zoomFactor = Math.exp(delta * 0.008)
-        const newScale = Math.max(0.05, Math.min(20, currentScale * zoomFactor))
-        
-        const worldX = (mouseX - currentOffset.x) / currentScale
-        const worldY = (mouseY - currentOffset.y) / currentScale
-        
-        const newOffsetX = mouseX - worldX * newScale
-        const newOffsetY = mouseY - worldY * newScale
-        
-        setScale(newScale)
-        setOffset({ x: newOffsetX, y: newOffsetY })
-      } else {
-        // Pan - smooth two-finger scroll in any direction
-        setOffset((prev: any) => ({
-          x: prev.x - e.deltaX,
-          y: prev.y - e.deltaY,
-        }))
+      if (e.ctrlKey || e.metaKey) { // Zoom
+        const zoomFactor = Math.exp(-e.deltaY * 0.008);
+        const newScale = Math.max(0.05, Math.min(20, currentScale * zoomFactor));
+        const worldX = (mouseX - currentOffset.x) / currentScale;
+        const worldY = (mouseY - currentOffset.y) / currentScale;
+        const newOffsetX = mouseX - worldX * newScale;
+        const newOffsetY = mouseY - worldY * newScale;
+        setScale(newScale);
+        setOffset({ x: newOffsetX, y: newOffsetY });
+      } else { // Pan
+        setOffset({ x: stateRef.current.offset.x - e.deltaX, y: stateRef.current.offset.y - e.deltaY });
       }
-    }
-
-    target.addEventListener("wheel", onWheel, { passive: false })
-    return () => {
-      target.removeEventListener("wheel", onWheel)
-    }
-  }, [])
-
-  const mergedImages = useMemo(() => {
-    const out: ImageMap = { ...(images || {}) }
-    if (rawRoots && Array.isArray(rawRoots)) {
-      const walk = (node: any) => {
-        if (node?.fill?.type === "IMAGE" && typeof node.fill.imageRef === "string") {
-          let imageUrl = node.fill.imageRef
-          if (imageUrl.startsWith('http') && !imageUrl.includes(window.location.hostname)) {
-            imageUrl = `/api/image-proxy?url=${encodeURIComponent(imageUrl)}`
-          }
-          out[node.id] = imageUrl
-          if (node.name) out[node.name] = imageUrl
-        }
-        node.children?.forEach((c: any) => walk(c))
-      }
-      rawRoots.forEach((r: any) => walk(r))
-    }
-    return out
-  }, [images, rawRoots, tick])
-
-  const loadedImages = useImageMap(mergedImages)
+    };
+    target.addEventListener("wheel", onWheel, { passive: false });
+    return () => target.removeEventListener("wheel", onWheel);
+  }, [setScale, setOffset]); // State setters are stable
 
   useEffect(() => {
-    const canvas = canvasRef.current
-    const overlay = overlayRef.current
-    if (!canvas || !overlay) return
-    canvas.style.touchAction = "none"
-    overlay.style.touchAction = "none"
+    const target = overlayRef.current;
+    if (!target) return;
 
-    const toWorld = (clientX: number, clientY: number) => {
-      const rect = canvas.getBoundingClientRect()
-      const sx = clientX - rect.left
-      const sy = clientY - rect.top
-      const wx = (sx - offset.x) / scale
-      const wy = (sy - offset.y) / scale
-      return { wx, wy, sx, sy }
-    }
-
-    const pointInRect = (px: number, py: number, r: { x: number; y: number; w: number; h: number }) =>
-      px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h
-
-    const rectsIntersect = (
-      a: { x: number; y: number; w: number; h: number },
-      b: { x: number; y: number; w: number; h: number },
-    ) => !(a.x + a.w < b.x || b.x + b.w < a.x || a.y + a.h < b.y || b.y + b.h < a.y)
-
-    const rectContains = (
-      a: { x: number; y: number; w: number; h: number },
-      b: { x: number; y: number; w: number; h: number },
-    ) => a.x <= b.x && a.y <= b.y && a.x + a.w >= b.x + b.w && a.y + a.h >= b.y + b.h
+    const pointInRect = (px: number, py: number, r: { x: number; y: number; w: number; h: number }) => {
+      const tolerance = 3 / stateRef.current.scale;
+      return px >= r.x - tolerance && px <= r.x + r.w + tolerance && py >= r.y - tolerance && py <= r.y + r.h + tolerance;
+    };
 
     const onPointerDown = (e: PointerEvent) => {
-      const { wx, wy } = toWorld(e.clientX, e.clientY)
-      lastPointer.current = { x: e.clientX, y: e.clientY }
-      downScreenRef.current = { x: e.clientX, y: e.clientY }
-      const isCtrl = e.ctrlKey || e.metaKey
-      const isSpace = keysRef.current.space
+      target.setPointerCapture(e.pointerId);
+      const { wx, wy } = toWorld(e.clientX, e.clientY);
+      lastPointer.current = { x: e.clientX, y: e.clientY };
+      downScreenRef.current = { x: e.clientX, y: e.clientY };
 
-      if (isSpace) {
-        modeRef.current = "pan"
-        setIsPanning(true)
-        overlay.setPointerCapture(e.pointerId)
-        return
+      if (keysRef.current.space || e.button === 1) {
+        modeRef.current = "pan";
+        stateRef.current.isPanning = true;
+        return;
       }
 
-      let hitId: string | null = null
+      let hitId: string | null = null;
       for (let i = drawableNodes.length - 1; i >= 0; i--) {
-        const n = drawableNodes[i]
+        const n = drawableNodes[i];
         if (pointInRect(wx, wy, { x: n.x, y: n.y, w: n.width, h: n.height })) {
-          hitId = n.id
-          break
+          hitId = n.id;
+          break;
         }
       }
 
       if (hitId) {
-        modeRef.current = "click"
-        if (!isCtrl) {
-          dragStartWorld.current = { wx, wy }
-          const map = new Map<string, { x: number; y: number }>()
-          const idsToMove = new Set<string>([hitId!])
-          drawableNodes.forEach((n: any) => {
-            if (idsToMove.has(n.id)) map.set(n.id, { x: n.x, y: n.y })
-          })
-          originalPositions.current = map
-          dragOffsetsRef.current.clear()
-        }
-        overlay.setPointerCapture(e.pointerId)
+        modeRef.current = "click";
+        dragStartWorld.current = { wx, wy };
+        
+        const isCtrl = e.ctrlKey || e.metaKey;
+        const currentSelection = stateRef.current.selectedIds;
+        const nextSelectedIds = currentSelection.has(hitId) && !isCtrl
+            ? currentSelection
+            : new Set(isCtrl ? (currentSelection.has(hitId) ? [...currentSelection].filter(id => id !== hitId) : [...currentSelection, hitId]) : [hitId]);
 
-        setSelectedIds((prev: any) => {
-          const next = new Set(prev)
-          if (isCtrl) {
-            if (next.has(hitId!)) next.delete(hitId!)
-            else next.add(hitId!)
-          } else {
-            if (!next.has(hitId!) || next.size > 1) {
-              next.clear()
-              next.add(hitId!)
-            }
-          }
-          return next
-        })
-        return
+        setSelectedIds(nextSelectedIds);
+        
+        originalPositions.current.clear();
+        nextSelectedIds.forEach(id => {
+            const node = nodeMap.get(id);
+            if (node) originalPositions.current.set(id, { x: node.x, y: node.y });
+        });
+        dragOffsetsRef.current.clear();
+      } else {
+        if (selectedIds.size > 0) setSelectedIds(new Set());
+        modeRef.current = "marquee";
+        marqueeStart.current = { wx, wy };
+        stateRef.current.isMarquee = true;
       }
-
-      if (!isCtrl && !isSpace) {
-        setSelectedIds(() => new Set())
-      }
-      modeRef.current = "pan"
-      setIsPanning(true)
-      overlay.setPointerCapture(e.pointerId)
-    }
+      requestRedraw();
+    };
 
     const onPointerMove = (e: PointerEvent) => {
-      if (modeRef.current === "click" && dragStartWorld.current && downScreenRef.current) {
-        const dxs = e.clientX - downScreenRef.current.x
-        const dys = e.clientY - downScreenRef.current.y
+      if (!lastPointer.current) return;
+
+      if (modeRef.current === "click") {
+        const dxs = e.clientX - downScreenRef.current!.x;
+        const dys = e.clientY - downScreenRef.current!.y;
         if (Math.hypot(dxs, dys) >= CLICK_DRAG_SLOP) {
-          modeRef.current = "drag"
+          modeRef.current = "drag";
         }
       }
-      lastPointer.current = { x: e.clientX, y: e.clientY }
-
-      if (modeRef.current === "idle") {
-        const { wx, wy } = toWorld(e.clientX, e.clientY)
-        let hitId: string | null = null
-        for (let i = drawableNodes.length - 1; i >= 0; i--) {
-          const n = drawableNodes[i]
-          if (pointInRect(wx, wy, { x: n.x, y: n.y, w: n.width, h: n.height })) {
-            hitId = n.id
-            break
-          }
-        }
-        setHoveredId(hitId)
-      }
-
-      if (modeRef.current === "pan") {
-        setOffset((o: any) => ({ x: o.x + e.movementX, y: o.y + e.movementY }))
-        return
-      }
-
-      if (modeRef.current === "drag" && dragStartWorld.current) {
-        const { wx, wy } = toWorld(e.clientX, e.clientY)
-        let dx = wx - dragStartWorld.current.wx
-        let dy = wy - dragStartWorld.current.wy
-        dx = Math.round(dx / SNAP) * SNAP
-        dy = Math.round(dy / SNAP) * SNAP
-
-        const offsets = dragOffsetsRef.current
-        offsets.clear()
-        originalPositions.current.forEach((_pos, id) => {
-          offsets.set(id, { dx, dy })
-        })
-        setTick((t) => (t + 1) & 0xffff)
-        return
-      }
-    }
-
-    const onPointerUp = (_e: PointerEvent) => {
-      if (modeRef.current === "pan") {
-        setIsPanning(false)
-      } else if (modeRef.current === "drag" && dragStartWorld.current) {
-        const offsets = dragOffsetsRef.current
-        if (offsets.size > 0 && rawRoots) {
-          const moved = new Set(offsets.keys())
-          const apply = (node: NodeInput) => {
-            if (moved.has(node.id)) {
-              const off = offsets.get(node.id)!
-              if (node.absoluteBoundingBox) {
-                node.absoluteBoundingBox.x = (node.absoluteBoundingBox.x ?? 0) + off.dx
-                node.absoluteBoundingBox.y = (node.absoluteBoundingBox.y ?? 0) + off.dy
-              } else {
-                if (typeof (node as any).x === "number") (node as any).x = ((node as any).x ?? 0) + off.dx
-                if (typeof (node as any).y === "number") (node as any).y = ((node as any).y ?? 0) + off.dy
-              }
-            }
-            node.children?.forEach(apply)
-          }
-          const next = structuredClone(rawRoots) as NodeInput[]
-          next.forEach(apply)
-          setRawRoots(next)
-        }
-        dragStartWorld.current = null
-        dragOffsetsRef.current.clear()
-      } else if (modeRef.current === "marquee" && marqueeStart.current) {
-        const rect = canvas.getBoundingClientRect()
-        const s2x = lastPointer.current!.x - rect.left
-        const s2y = lastPointer.current!.y - rect.top
-        const endX = (s2x - offset.x) / scale
-        const endY = (s2y - offset.y) / scale
-        const sel = {
-          x: Math.min(marqueeStart.current.wx, endX),
-          y: Math.min(marqueeStart.current.wy, endY),
-          w: Math.abs(endX - marqueeStart.current.wx),
-          h: Math.abs(endY - marqueeStart.current.wy),
-        }
-        setSelectedIds(() => {
-          const next = new Set<string>()
-          for (const n of drawableNodes) {
-            const nodeRect = { x: n.x, y: n.y, w: n.width, h: n.height }
-            const include = rectContains(sel, nodeRect) || rectsIntersect(sel, nodeRect)
-            if (include) next.add(n.id)
-          }
-          return next
-        })
-        setIsMarquee(false)
-        marqueeStart.current = null
-      }
-      modeRef.current = "idle"
-    }
-
-    overlay.addEventListener("pointerdown", onPointerDown)
-    window.addEventListener("pointermove", onPointerMove)
-    window.addEventListener("pointerup", onPointerUp)
-
-    return () => {
-      overlay.removeEventListener("pointerdown", onPointerDown)
-      window.removeEventListener("pointermove", onPointerMove)
-      window.removeEventListener("pointerup", onPointerUp)
-    }
-  }, [drawableNodes, offset, scale, rawRoots, setOffset, setRawRoots, setSelectedIds])
-
-  useEffect(() => {
-    const canvas = canvasRef.current
-    const overlay = overlayRef.current
-    if (!canvas || !overlay) return
-
-    const dpr = window.devicePixelRatio || 1
-    ;[canvas, overlay].forEach((c) => {
-      c.style.width = `${viewportSize.width}px`
-      c.style.height = `${viewportSize.height}px`
-      c.width = Math.floor(viewportSize.width * dpr)
-      c.height = Math.floor(viewportSize.height * dpr)
-    })
-
-    const ctx = canvas.getContext("2d")!
-    const octx = overlay.getContext("2d")!
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    ctx.clearRect(0, 0, viewportSize.width, viewportSize.height)
-    ctx.fillStyle = "rgba(236, 231, 231, 1)"
-    ctx.fillRect(0, 0, viewportSize.width, viewportSize.height)
-
-    if (!drawableNodes || drawableNodes.length === 0) {
-      drawGrid(ctx, viewportSize.width, viewportSize.height, offset, scale, 100, 20)
-    }
-    
-    drawNodes(ctx, drawableNodes, offset, scale, selectedIds, dragOffsetsRef.current, rawRoots || null, hoveredId)
-
-    for (const n of drawableNodes) {
-      let nodeData: any = null
-      let fillProps: any = null
       
-      if (rawRoots) {
-        const findNode = (node: any): any => {
-          if (node.id === n.id) return node
-          if (node.children) {
-            for (const child of node.children) {
-              const found = findNode(child)
-              if (found) return found
+      lastPointer.current = { x: e.clientX, y: e.clientY };
+
+      // FIX: Pan logic now only mutates the ref for performance.
+      if (modeRef.current === "pan") {
+        stateRef.current.offset.x += e.movementX;
+        stateRef.current.offset.y += e.movementY;
+        requestRedraw();
+        return;
+      }
+      
+      if (modeRef.current === "marquee") {
+        requestRedraw();
+        return;
+      }
+      
+      if (modeRef.current === "drag" && dragStartWorld.current) {
+        const { wx, wy } = toWorld(e.clientX, e.clientY);
+        let dx = wx - dragStartWorld.current.wx;
+        let dy = wy - dragStartWorld.current.wy;
+        
+        const guides = { verticalLines: [] as any[], horizontalLines: [] as any[] };
+        let finalDx = dx;
+        let finalDy = dy;
+
+        const primaryNodeId = originalPositions.current.keys().next().value;
+        if (primaryNodeId) {
+            const node = nodeMap.get(primaryNodeId)!;
+            const originalPos = originalPositions.current.get(primaryNodeId)!;
+            const parentId = childToParentMap.get(primaryNodeId);
+            const parent = parentId ? nodeMap.get(parentId) : null;
+
+            if (parent) {
+                const nodeCenterX = originalPos.x + dx + node.width / 2;
+                const nodeCenterY = originalPos.y + dy + node.height / 2;
+                const parentCenterX = parent.x + parent.width / 2;
+                const parentCenterY = parent.y + parent.height / 2;
+
+                if (Math.abs(nodeCenterX - parentCenterX) < ALIGNMENT_THRESHOLD) {
+                    finalDx = parentCenterX - node.width / 2 - originalPos.x;
+                    guides.verticalLines.push({ x: parentCenterX, parentId: parent.id });
+                }
+                if (Math.abs(nodeCenterY - parentCenterY) < ALIGNMENT_THRESHOLD) {
+                    finalDy = parentCenterY - node.height / 2 - originalPos.y;
+                    guides.horizontalLines.push({ y: parentCenterY, parentId: parent.id });
+                }
             }
-          }
-          return null
         }
         
-        for (const root of rawRoots) {
-          const found = findNode(root)
-          if (found) {
-            nodeData = found
-            fillProps = found.fill
-            break
+        dragOffsetsRef.current.clear();
+        originalPositions.current.forEach((_pos, id) => {
+            dragOffsetsRef.current.set(id, { dx: finalDx, dy: finalDy });
+        });
+        stateRef.current.alignmentGuides = guides;
+        requestRedraw();
+        return;
+      }
+      
+      if (modeRef.current === 'idle') {
+          const { wx, wy } = toWorld(e.clientX, e.clientY);
+          let hitId: string | null = null;
+          for (let i = drawableNodes.length - 1; i >= 0; i--) {
+              const n = drawableNodes[i];
+              if (pointInRect(wx, wy, { x: n.x, y: n.y, w: n.width, h: n.height })) {
+                  hitId = n.id;
+                  break;
+              }
           }
-        }
-      }
-
-      if (!fillProps || fillProps.type !== "IMAGE") continue
-
-      const img = loadedImages[n.id] || loadedImages[n.name]
-      if (!img || !img.complete || !img.naturalWidth || !img.naturalHeight) continue
-
-      const fitMode = fillProps?.fit || "cover"
-      const opacity = fillProps?.opacity !== undefined ? fillProps.opacity : 1
-
-      const x = offset.x + n.x * scale
-      const y = offset.y + n.y * scale
-      const w = Math.max(0.5, n.width * scale)
-      const h = Math.max(0.5, n.height * scale)
-
-      let dx = x, dy = y, dw = w, dh = h
-
-      if (fitMode === "cover") {
-        const ir = img.naturalWidth / img.naturalHeight
-        const br = w / h
-        if (ir > br) {
-          dh = h
-          dw = h * ir
-          dx = x + (w - dw) / 2
-          dy = y
-        } else {
-          dw = w
-          dh = w / ir
-          dx = x
-          dy = y + (h - dh) / 2
-        }
-      } else if (fitMode === "contain") {
-        const ir = img.naturalWidth / img.naturalHeight
-        const br = w / h
-        if (ir > br) {
-          dw = w
-          dh = w / ir
-          dx = x
-          dy = y + (h - dh) / 2
-        } else {
-          dh = h
-          dw = h * ir
-          dx = x + (w - dw) / 2
-          dy = y
-        }
-      }
-
-      const radius = nodeData?.corners?.uniform || 0
-
-      try {
-        ctx.save()
-        ctx.globalAlpha = opacity
-
-        if (radius && radius > 0) {
-          const r = Math.min(radius * scale, Math.min(w, h) / 2)
-          ctx.beginPath()
-          if ((ctx as any).roundRect) {
-            (ctx as any).roundRect(x, y, w, h, r)
-          } else {
-            ctx.moveTo(x + r, y)
-            ctx.arcTo(x + w, y, x + w, y + h, r)
-            ctx.arcTo(x + w, y + h, x, y + h, r)
-            ctx.arcTo(x, y + h, x, y, r)
-            ctx.arcTo(x, y, x + w, y, r)
-            ctx.closePath()
+          if (hitId !== stateRef.current.hoveredId) {
+              stateRef.current.hoveredId = hitId;
+              requestRedraw();
           }
-          ctx.clip()
-        }
-
-        ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, dx, dy, dw, dh)
-        ctx.restore()
-      } catch (err) {
-        ctx.restore()
-        continue
       }
-    }
+    };
 
-    octx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    octx.clearRect(0, 0, viewportSize.width, viewportSize.height)
+    const onPointerUp = (e: PointerEvent) => {
+      try { target.releasePointerCapture(e.pointerId); } catch(err) {/* ignore */}
+      
+      // FIX: Commit final state for panning after the interaction ends.
+      if (modeRef.current === 'pan') {
+          setOffset(stateRef.current.offset);
+      }
+      
+      if (modeRef.current === "drag") {
+        const offsets = new Map(dragOffsetsRef.current);
+        if (offsets.size > 0 && rawRoots) {
+            // FIX: Use performant update function instead of structuredClone
+            const next = updateNodePositions(rawRoots, offsets);
+            if (next !== rawRoots) setRawRoots(next);
+        }
+      } else if (modeRef.current === 'marquee' && marqueeStart.current) {
+        const { wx: endX, wy: endY } = toWorld(e.clientX, e.clientY);
+        const sel = {
+            x: Math.min(marqueeStart.current.wx, endX), y: Math.min(marqueeStart.current.wy, endY),
+            w: Math.abs(endX - marqueeStart.current.wx), h: Math.abs(endY - marqueeStart.current.wy)
+        };
+        const nextIds = new Set<string>();
+        for (const n of drawableNodes) {
+            if (rectsIntersect(sel, { x: n.x, y: n.y, w: n.width, h: n.height })) {
+                nextIds.add(n.id);
+            }
+        }
+        setSelectedIds(nextIds);
+      }
 
-    if (isMarquee && marqueeStart.current && lastPointer.current) {
-      const s1x = offset.x + marqueeStart.current.wx * scale
-      const s1y = offset.y + marqueeStart.current.wy * scale
-      const rect = overlay.getBoundingClientRect()
-      const s2x = lastPointer.current.x - rect.left
-      const s2y = lastPointer.current.y - rect.top
-      const mx = Math.min(s1x, s2x)
-      const my = Math.min(s1y, s2y)
-      const mw = Math.abs(s2x - s1x)
-      const mh = Math.abs(s2y - s1y)
-      octx.fillStyle = "rgba(16, 185, 129, 0.12)"
-      octx.strokeStyle = "#10b981"
-      octx.lineWidth = 1.5
-      octx.fillRect(mx, my, mw, mh)
-      octx.strokeRect(mx, my, mw, mh)
-    }
+      modeRef.current = "idle";
+      dragStartWorld.current = null;
+      dragOffsetsRef.current.clear();
+      stateRef.current.isPanning = false;
+      stateRef.current.isMarquee = false;
+      stateRef.current.alignmentGuides = { verticalLines: [], horizontalLines: [] };
+      requestRedraw();
+    };
 
-    if (selectedFrame) drawReferenceFrameOverlay(octx, selectedFrame, offset, scale)
-  }, [drawableNodes, viewportSize, offset, scale, selectedIds, isMarquee, tick, rawRoots, selectedFrame, loadedImages, hoveredId])
+    target.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    
+    return () => {
+      target.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+    };
+  }, [toWorld, nodeMap, childToParentMap, drawableNodes, rawRoots, selectedIds, setRawRoots, setSelectedIds, setOffset, requestRedraw]);
+
+  // Redraw whenever key state changes that aren't driven by interaction handlers
+  useEffect(() => {
+    requestRedraw()
+  }, [drawableNodes, selectedIds, offset, scale, requestRedraw])
 
   return (
-    <div className={styles.root} style={{ cursor: isPanning ? "grabbing" : "default" }}>
+    <div className={styles.root} style={{ cursor: stateRef.current.isPanning ? "grabbing" : keysRef.current.space ? "grab" : "default" }}>
       <canvas ref={canvasRef} className={styles.canvasBase} />
       <canvas ref={overlayRef} className={styles.canvasOverlay} />
     </div>
@@ -555,70 +499,52 @@ export default function CanvasStage(props: {
 }
 
 function useImageMap(map: ImageMap) {
-  const [state, setState] = useState<Record<string, HTMLImageElement>>({})
+  const [state, setState] = useState<Record<string, HTMLImageElement>>({});
 
   const mapKey = useMemo(() =>
-    Object.entries(map)
-      .map(([k, v]) => `${k}:${typeof v === "string" ? v : (v && (v as HTMLImageElement).src) ?? ""}`)
-      .join("|"),
-  [map])
+    Object.entries(map).map(([k, v]) => `${k}:${typeof v === "string" ? v : (v as HTMLImageElement)?.src ?? ""}`).join("|"),
+  [map]);
 
   useEffect(() => {
-    let alive = true
-    const next: Record<string, HTMLImageElement> = {}
-    let pending = 0
+    let alive = true;
+    const next: Record<string, HTMLImageElement> = {};
+    const promises: Promise<void>[] = [];
 
-    const finish = () => {
-      if (alive) setState({ ...next })
-    }
-
-    const entries = Object.entries(map)
+    const entries = Object.entries(map);
     entries.forEach(([key, val]) => {
       if (typeof val !== "string") {
-        const img = val as HTMLImageElement
-        if (img && img.complete) next[key] = img
-        else if (img) {
-          pending++
-          const onLoad = () => {
-            next[key] = img
-            if (--pending === 0) finish()
-          }
-          const onError = () => {
-            if (--pending === 0) finish()
-          }
-          img.addEventListener("load", onLoad, { once: true })
-          img.addEventListener("error", onError, { once: true })
-        }
-        return
+        const img = val as HTMLImageElement;
+        if (img?.complete) next[key] = img;
+        return;
       }
 
-      const src = val as string
-      const existing = Object.values(state).find((i) => i.src === src)
-      if (existing && existing.complete) {
-        next[key] = existing
-        return
+      const src = val as string;
+      const existing = Object.values(state).find(i => i.src === src);
+      if (existing?.complete) {
+        next[key] = existing;
+        return;
       }
 
-      const img = new Image()
-      pending++
-      try {
-        img.crossOrigin = "anonymous"
-      } catch {}
-      img.onload = () => {
-        next[key] = img
-        if (--pending === 0) finish()
-      }
-      img.onerror = () => {
-        if (--pending === 0) finish()
-      }
-      img.src = src
-    })
+      const promise = new Promise<void>((resolve) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => { next[key] = img; resolve(); };
+        img.onerror = () => { resolve(); };
+        img.src = src;
+      });
+      promises.push(promise);
+    });
 
-    if (pending === 0) finish()
-    return () => {
-      alive = false
+    if (promises.length > 0) {
+        Promise.all(promises).then(() => {
+            if (alive) setState(prev => ({ ...prev, ...next }));
+        });
+    } else if (Object.keys(next).length > 0 && Object.keys(next).some(k => !state[k] || state[k].src !== next[k].src)) {
+        setState(prev => ({ ...prev, ...next }));
     }
-  }, [mapKey])
 
-  return state
+    return () => { alive = false; };
+  }, [mapKey, state]);
+
+  return state;
 }
