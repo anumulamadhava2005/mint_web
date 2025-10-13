@@ -58,7 +58,8 @@ export function drawNodes(
   scale: number,
   selectedIds: Set<string>,
   transientOffsets: Map<string, { dx: number; dy: number }>,
-  rawRoots: NodeInput[] | null
+  rawRoots: NodeInput[] | null,
+  hoveredId?: string | null
 ) {
   // Helper to find the raw node by id
   function findRaw(id: string) {
@@ -71,6 +72,28 @@ export function drawNodes(
       if (node.children) stack.push(...node.children);
     }
     return undefined;
+  }
+
+  // Helper to get all child IDs of a node
+  function getChildIds(nodeId: string): Set<string> {
+    const childIds = new Set<string>();
+    const rawNode = findRaw(nodeId);
+    if (!rawNode || !rawNode.children) return childIds;
+    
+    const stack = [...rawNode.children];
+    while (stack.length) {
+      const node = stack.pop();
+      if (!node) continue;
+      childIds.add(node.id);
+      if (node.children) stack.push(...node.children);
+    }
+    return childIds;
+  }
+
+  // Helper to check if a node has children
+  function hasChildren(nodeId: string): boolean {
+    const rawNode = findRaw(nodeId);
+    return !!(rawNode && rawNode.children && rawNode.children.length > 0);
   }
 
   // Simple word-wrap helper
@@ -202,24 +225,14 @@ export function drawNodes(
         if (rawNode?.stroke) {
           ctx.stroke();
         } else {
-          // Default subtle outline for all shapes without explicit stroke
-          ctx.save();
-          ctx.strokeStyle = "rgba(0,0,0,0.6)";
-          ctx.lineWidth = 1; // screen-space hairline
-          ctx.setLineDash([]);
-          ctx.stroke();
-          ctx.restore();
+          // No default outline - remove black borders
         }
       } else {
         ctx.fillRect(x, y, w, h);
         if (rawNode?.stroke) {
           ctx.strokeRect(x, y, w, h);
         } else {
-          // Default subtle outline for all shapes without explicit stroke
-          ctx.save();
-          ctx.strokeStyle = "rgba(0,0,0,0.6)";
-          ctx.lineWidth = 1; // screen-space hairline
-          ctx.setLineDash([]);
+          // No default outline - remove black borders
           ctx.strokeRect(x, y, w, h);
           ctx.restore();
         }
@@ -232,12 +245,41 @@ export function drawNodes(
     ctx.shadowBlur = 0;
     ctx.setLineDash([]);
 
-    // --- Selection outline ---
+    // --- Selection and Hover outlines ---
     if (selectedIds.has(n.id)) {
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = "#2563eb"; // hyperlink-like dark blue
+      ctx.lineWidth = 2; // Much thicker for better visibility
+      ctx.strokeStyle = "#1e40af"; // darker blue for better visibility
       ctx.setLineDash([]); // solid outline
       ctx.strokeRect(x, y, w, h);
+    } else if (hoveredId) {
+      const hoveredChildIds = getChildIds(hoveredId);
+      
+      if (hoveredId === n.id) {
+        // This is the hovered node itself
+        const isParent = hasChildren(n.id);
+        
+        if (isParent) {
+          // Parent nodes get solid lines with thinner border
+          ctx.lineWidth = 1;
+          ctx.strokeStyle = "#1a72ffff"; // blue for parent
+          ctx.setLineDash([]);
+        } else {
+          // Child nodes get dotted lines with lighter color
+          ctx.lineWidth = 0.5;
+          ctx.strokeStyle = "#70b1ffff"; // lighter blue for children
+          ctx.setLineDash([4, 4]);
+        }
+        
+        ctx.strokeRect(x, y, w, h);
+        ctx.setLineDash([]); // reset
+      } else if (hoveredChildIds.has(n.id)) {
+        // This is a child of the hovered node
+        ctx.lineWidth = 0.5;
+        ctx.strokeStyle = "#60a5fa"; // lighter blue for children
+        ctx.setLineDash([4, 4]); // dotted lines for children
+        ctx.strokeRect(x, y, w, h);
+        ctx.setLineDash([]); // reset
+      }
     }
 
     // --- Text rendering ---

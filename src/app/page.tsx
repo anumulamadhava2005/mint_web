@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
+import * as React from "react";
 import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import Toolbar from "../../components/ToolBar";
 import CanvasStage from "../../components/CanvasStage";
@@ -14,6 +15,21 @@ import { Home } from "../../components/home";
 import { ProjectsPage } from "../../components/ProjectsPage";
 import Spinner from "../../components/Spinner";
 import styles from "./page.module.css";
+
+// NEW: interaction type for element/frame connections
+type Interaction = {
+  id: string;
+  sourceId: string;
+  targetId: string;
+  type: "navigation" | "animation";
+  trigger: "onClick" | "onTap";
+  animation?: {
+    name: "none" | "fade" | "slide" | "zoom";
+    durationMs?: number;
+    easing?: "linear" | "ease-in" | "ease-out" | "ease-in-out";
+    direction?: "left" | "right" | "up" | "down";
+  };
+};
 
 /** Immutable, safe updater that preserves children and only changes the target node */
 function updateNodeByIdSafe(roots: NodeInput[], id: string, mut: (n: NodeInput) => void): NodeInput[] {
@@ -68,6 +84,18 @@ function HomePage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectedFrameId, setSelectedFrameId] = useState<string>("");
   const [images, setImages] = useState<Record<string, string | HTMLImageElement>>({});
+  // NEW: interactions state
+  const [interactions, setInteractions] = useState<Interaction[]>([]);
+  // NEW: UI state for adding a connection
+  const [connectOpen, setConnectOpen] = useState(false);
+  const [connectSourceId, setConnectSourceId] = useState<string | null>(null);
+  const [connectTargetId, setConnectTargetId] = useState<string>("");
+  const [connectType, setConnectType] = useState<Interaction["type"]>("navigation");
+  const [connectTrigger, setConnectTrigger] = useState<Interaction["trigger"]>("onClick");
+  const [connectAnimationName, setConnectAnimationName] = useState<NonNullable<Interaction["animation"]>["name"]>("none");
+  const [connectAnimationDuration, setConnectAnimationDuration] = useState<number>(300);
+  const [connectAnimationEasing, setConnectAnimationEasing] = useState<NonNullable<Interaction["animation"]>["easing"]>("ease-in-out");
+  const [connectAnimationDirection, setConnectAnimationDirection] = useState<NonNullable<Interaction["animation"]>["direction"]>("right");
 
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -83,6 +111,8 @@ function HomePage() {
     scale: number;
     offset: { x: number; y: number };
     lastFileKey: string | null;
+    // NEW: persist interactions
+    interactions: Interaction[];
   }>) => {
     try {
       const existing = JSON.parse(localStorage.getItem('mint-editor-state') || '{}');
@@ -317,12 +347,14 @@ function HomePage() {
       if (savedState.offset && typeof savedState.offset.x === 'number' && typeof savedState.offset.y === 'number') {
         setOffset(savedState.offset);
       }
+      // NEW: restore interactions
+      if (Array.isArray(savedState.interactions)) setInteractions(savedState.interactions);
     }
   }, [loadStateFromStorage]);
 
   // Save state on changes
   useEffect(() => {
-    if (rawRoots || fileName || Object.keys(images).length > 0) {
+    if (rawRoots || fileName || Object.keys(images).length > 0 || interactions.length > 0) {
       // Convert images to serializable format (only strings)
       const serializableImages: Record<string, string> = {};
       Object.entries(images).forEach(([key, value]) => {
@@ -336,10 +368,12 @@ function HomePage() {
         selectedFrameId,
         images: serializableImages,
         scale,
-        offset
+        offset,
+        // NEW: persist interactions
+        interactions,
       });
     }
-  }, [rawRoots, fileName, selectedIds, selectedFrameId, images, scale, offset, saveStateToStorage]);
+  }, [rawRoots, fileName, selectedIds, selectedFrameId, images, scale, offset, saveStateToStorage, interactions]);
 
   async function onFetch(fileUrlOrKey: string) {
     setError(null);
@@ -421,7 +455,14 @@ function HomePage() {
     const res = await fetch("/api/convert", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ target, fileName: name || "figma-project", nodes, referenceFrame }),
+      body: JSON.stringify({
+        target,
+        fileName: name || "figma-project",
+        nodes,
+        referenceFrame,
+        // NEW: include interactions for conversion
+        interactions,
+      }),
     });
     if (!res.ok) throw new Error((await res.text()) || "Conversion failed");
     const blob = await res.blob();
@@ -530,6 +571,186 @@ function HomePage() {
     return clone;
   }
 
+  // NEW: parent index builder for grouping/ungrouping
+  const buildParentIndex = useCallback((roots: NodeInput[]) => {
+    const parentById = new Map<string, { parentId: string | null; index: number }>();
+    const walk = (arr: NodeInput[] | undefined | null, parentId: string | null) => {
+      (arr || []).forEach((n, i) => {
+        parentById.set(n.id, { parentId, index: i });
+        if (n.children && n.children.length) walk(n.children as NodeInput[], n.id);
+      });
+    };
+    walk(roots, null);
+    return parentById;
+  }, []);
+
+  // NEW: delete selected nodes
+  const deleteSelected = useCallback(() => {
+    if (!rawRoots || selectedIds.size === 0) return;
+    const ids = new Set(selectedIds);
+    const rec = (node: any): any | null => {
+      if (ids.has(node.id)) return null;
+      if (Array.isArray(node.children) && node.children.length) {
+        let changed = false;
+        const nextChildren: any[] = [];
+        for (const c of node.children) {
+          const r = rec(c);
+          if (r === null) {
+            changed = true;
+            continue;
+          }
+          if (r !== c) changed = true;
+          nextChildren.push(r);
+        }
+        if (changed) return { ...node, children: nextChildren };
+      }
+      return node;
+    };
+    const nextRoots = (rawRoots.map((r) => rec(r)).filter(Boolean) as unknown) as NodeInput[];
+    setRawRoots(nextRoots);
+    if (selectedFrameId && ids.has(selectedFrameId)) setSelectedFrameId("");
+    setSelectedIds(new Set());
+    // prune interactions where source or target was deleted
+    setInteractions((prev) => prev.filter((it) => !ids.has(it.sourceId) && !ids.has(it.targetId)));
+  }, [rawRoots, selectedIds, selectedFrameId]);
+
+  // NEW: group selected nodes (requires same parent)
+  const groupSelected = useCallback(() => {
+    if (!rawRoots || selectedIds.size < 2) return;
+    const idsArr = Array.from(selectedIds);
+    const parentIndex = buildParentIndex(rawRoots);
+    const parents = new Set<string | null>(idsArr.map((id) => parentIndex.get(id)?.parentId ?? null));
+    if (parents.size !== 1) {
+      alert("Select nodes with the same parent to group.");
+      return;
+    }
+    const parentId = parents.values().next().value as string | null;
+    const parentNode = parentId ? (findNodeById(rawRoots, parentId) as any) : null;
+    const collection: any[] = parentNode ? (parentNode.children || []) : (rawRoots as any[]);
+
+    const selectedChildren = collection.filter((c) => selectedIds.has(c.id));
+    if (selectedChildren.length !== idsArr.length) {
+      alert("Select nodes with the same parent to group.");
+      return;
+    }
+
+    const minX = Math.min(...selectedChildren.map((n) => Number(n.x || 0)));
+    const minY = Math.min(...selectedChildren.map((n) => Number(n.y || 0)));
+    const maxX = Math.max(...selectedChildren.map((n) => Number(n.x || 0) + Number(n.width || n.w || 0)));
+    const maxY = Math.max(...selectedChildren.map((n) => Number(n.y || 0) + Number(n.height || n.h || 0)));
+    const width = Math.max(0, maxX - minX);
+    const height = Math.max(0, maxY - minY);
+
+    const groupId = "group_" + Date.now().toString(36);
+    const groupNode: any = {
+      id: groupId,
+      type: "GROUP",
+      name: "Group",
+      x: minX,
+      y: minY,
+      width,
+      height,
+      w: width,
+      h: height,
+      children: selectedChildren.map((c) => ({
+        ...c,
+        x: Number(c.x || 0) - minX,
+        y: Number(c.y || 0) - minY,
+      })),
+    };
+
+    const selectedSet = new Set(selectedChildren.map((c) => c.id));
+    const firstIndex = Math.min(...selectedChildren.map((c) => collection.indexOf(c)));
+    const left = collection.slice(0, firstIndex).filter((c) => !selectedSet.has(c.id));
+    const right = collection.slice(firstIndex).filter((c) => !selectedSet.has(c.id));
+    const newCollection = [...left, groupNode, ...right];
+
+    if (parentId) {
+      setRawRoots((prev) => (prev ? updateNodeByIdSafe(prev, parentId, (p) => ((p as any).children = newCollection)) : prev));
+    } else {
+      setRawRoots(newCollection as NodeInput[]);
+    }
+    setSelectedIds(new Set([groupId]));
+  }, [rawRoots, selectedIds, buildParentIndex]);
+
+  // NEW: ungroup currently selected group (single selection)
+  const ungroupSelected = useCallback(() => {
+    if (!rawRoots || selectedIds.size !== 1) return;
+    const id = Array.from(selectedIds)[0];
+    const node = findNodeById(rawRoots, id) as any;
+    if (!node || node.type !== "GROUP") return;
+
+    const parentIndex = buildParentIndex(rawRoots);
+    const meta = parentIndex.get(id);
+    const parentId = meta?.parentId ?? null;
+
+    const childrenAdjusted = (node.children || []).map((c: any) => ({
+      ...c,
+      x: Number(c.x || 0) + Number(node.x || 0),
+      y: Number(c.y || 0) + Number(node.y || 0),
+    }));
+
+    if (parentId) {
+      setRawRoots((prev) =>
+        prev
+          ? updateNodeByIdSafe(prev, parentId, (p) => {
+              const arr = ((p as any).children || []) as any[];
+              const idx = arr.findIndex((c) => c.id === id);
+              if (idx === -1) return;
+              const newChildren = [...arr.slice(0, idx), ...childrenAdjusted, ...arr.slice(idx + 1)];
+              (p as any).children = newChildren;
+            })
+          : prev
+      );
+    } else {
+      // top-level
+      setRawRoots((prev) => {
+        if (!prev) return prev;
+        const idx = prev.findIndex((c) => (c as any).id === id);
+        if (idx === -1) return prev;
+        return [...prev.slice(0, idx), ...childrenAdjusted, ...prev.slice(idx + 1)];
+      });
+    }
+    setSelectedIds(new Set(childrenAdjusted.map((c: any) => c.id)));
+  }, [rawRoots, selectedIds, buildParentIndex]);
+
+  // NEW: create new frame with a name (prompt)
+  const handleCreateFrame = useCallback(() => {
+    const name = (window.prompt("New frame name?") || "").trim();
+    if (!name) return;
+    const id = "frame_" + Date.now().toString(36);
+    const frame: any = {
+      id,
+      type: "FRAME",
+      name,
+      x: Math.round((0 - offset.x) / scale + 100),
+      y: Math.round((0 - offset.y) / scale + 100),
+      width: 600,
+      height: 400,
+      w: 600,
+      h: 400,
+      children: [],
+    };
+    setRawRoots((prev) => ([...(prev || []), frame]));
+    setSelectedIds(new Set([id]));
+    setSelectedFrameId(id);
+  }, [offset, scale, setRawRoots, setSelectedIds, setSelectedFrameId]);
+
+  // NEW: rename selected frame
+  const handleRenameFrame = useCallback(() => {
+    if (!rawRoots || selectedIds.size !== 1) return;
+    const id = Array.from(selectedIds)[0];
+    const node = findNodeById(rawRoots, id) as any;
+    if (!node || node.type !== "FRAME") {
+      alert("Select a frame to rename.");
+      return;
+    }
+    const next = window.prompt("Rename frame", String(node.name || "")) || "";
+    const name = next.trim();
+    if (!name) return;
+    setRawRoots((prev) => (prev ? updateNodeByIdSafe(prev, id, (n) => ((n as any).name = name)) : prev));
+  }, [rawRoots, selectedIds]);
+
   async function commitLive() {
     try {
       if (!lastFileKey) {
@@ -588,6 +809,8 @@ function HomePage() {
         fileName: fileName ?? undefined,
         images,
         referenceFrame: selectedFrame ?? null,
+        // NEW: include interactions for live publish (optional but helpful)
+        interactions,
         forcePublish: true,
         cacheBuster: Date.now(),
       };
@@ -635,6 +858,135 @@ function HomePage() {
     return () => clearTimeout(t);
   }, [commitSuccess]);
 
+  // NEW: open Add Connection modal for current selection
+  const handleOpenAddConnection = useCallback(() => {
+    if (selectedIds.size !== 1) {
+      alert("Select a single element or frame to create a connection.");
+      return;
+    }
+    const sid = Array.from(selectedIds)[0];
+    setConnectSourceId(sid);
+    setConnectTargetId("");
+    setConnectType("navigation");
+    setConnectTrigger("onClick");
+    setConnectAnimationName("none");
+    setConnectAnimationDuration(300);
+    setConnectAnimationEasing("ease-in-out");
+    setConnectAnimationDirection("right");
+    setConnectOpen(true);
+  }, [selectedIds]);
+
+  const confirmAddConnection = useCallback(() => {
+    if (!connectSourceId || !connectTargetId) {
+      alert("Please select a target element or frame.");
+      return;
+    }
+    if (connectSourceId === connectTargetId) {
+      alert("Source and target must be different.");
+      return;
+    }
+    const newIt: Interaction = {
+      id: "it_" + Date.now().toString(36),
+      sourceId: connectSourceId,
+      targetId: connectTargetId,
+      type: connectType,
+      trigger: connectTrigger,
+      animation:
+        connectType === "animation"
+          ? {
+              name: connectAnimationName,
+              durationMs: Number.isFinite(connectAnimationDuration) ? connectAnimationDuration : 300,
+              easing: connectAnimationEasing,
+              direction: connectAnimationDirection,
+            }
+          : { name: "none" },
+    };
+    setInteractions((prev) => [...prev, newIt]);
+    setConnectOpen(false);
+  }, [
+    connectSourceId,
+    connectTargetId,
+    connectType,
+    connectTrigger,
+    connectAnimationName,
+    connectAnimationDuration,
+    connectAnimationEasing,
+    connectAnimationDirection,
+  ]);
+
+  const removeInteraction = useCallback((id: string) => {
+    setInteractions((prev) => prev.filter((it) => it.id !== id));
+  }, []);
+
+  const nodeLabelById = useCallback(
+    (id: string) => {
+      if (!rawRoots) return id;
+      const n = findNodeById(rawRoots, id) as any;
+      return n ? `${n.name || n.type || "Node"} (${id})` : id;
+    },
+    [rawRoots]
+  );
+
+  // Build a list of possible targets
+  const targetOptions = useMemo(() => {
+    if (!rawRoots) return [];
+    const all: any[] = [];
+    const walk = (arr: any[]) => {
+      (arr || []).forEach((n) => {
+        all.push(n);
+        if (n.children && n.children.length) walk(n.children);
+      });
+    };
+    walk(rawRoots as any[]);
+    return all;
+  }, [rawRoots]);
+
+  // NEW: keyboard shortcuts
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+
+      const cmdOrCtrl = e.metaKey || e.ctrlKey;
+      const key = e.key.toLowerCase();
+
+      // Undo
+      if (cmdOrCtrl && key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+        return;
+      }
+      // Redo: Ctrl+Y or Cmd+Shift+Z
+      if ((cmdOrCtrl && key === "y") || (cmdOrCtrl && key === "z" && e.shiftKey)) {
+        e.preventDefault();
+        handleRedo();
+        return;
+      }
+      // Delete selection
+      if (e.key === "Delete" || e.key === "Backspace") {
+        if (!cmdOrCtrl && !e.altKey) {
+          e.preventDefault();
+          deleteSelected();
+        }
+        return;
+      }
+      // Group
+      if (cmdOrCtrl && key === "g" && !e.shiftKey) {
+        e.preventDefault();
+        groupSelected();
+        return;
+      }
+      // Ungroup
+      if (cmdOrCtrl && key === "g" && e.shiftKey) {
+        e.preventDefault();
+        ungroupSelected();
+        return;
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [handleUndo, handleRedo, deleteSelected, groupSelected, ungroupSelected]);
+
   // Show projects page if routed there
   if (showProjects) {
     return <ProjectsPage />;
@@ -647,7 +999,7 @@ function HomePage() {
 
   return (
     <div className={styles.root}>
-      {loading && <Spinner />}
+      {loading && !rawRoots && !user && <Spinner />}
       
       {/* Toolbar - Top bar with dark theme */}
       <div className={styles.toolbarBar}>
@@ -723,6 +1075,229 @@ function HomePage() {
           />
         )}
       </div>
+
+      {/* NEW: quick actions (create frame / rename frame / add connection) */}
+      <div
+        style={{
+          position: "fixed",
+          left: 12,
+          bottom: 12,
+          display: "flex",
+          gap: 8,
+          zIndex: 1200,
+          alignItems: "center",
+        }}
+      >
+        <button
+          onClick={handleCreateFrame}
+          title="Create a new frame"
+          style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #000000ff", background: "#000000ff", color: "#fff", cursor: "pointer" }}
+        >
+          New Frame
+        </button>
+        {selectedNode && (selectedNode as any).type === "FRAME" && (
+          <button
+            onClick={handleRenameFrame}
+            title="Rename selected frame"
+            style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #000000ff", background: "#000000ff", color: "#fff", cursor: "pointer" }}
+          >
+            Rename
+          </button>
+        )}
+        {/* Add Connection button visible when a single selection exists */}
+        {selectedIds.size === 1 && (
+          <button
+            onClick={handleOpenAddConnection}
+            title="Connect selected to another element or frame"
+            style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #000000ff", background: "#000000ff", color: "#fff", cursor: "pointer" }}
+          >
+            Add Connection
+          </button>
+        )}
+      </div>
+
+      {/* NEW: simple list of interactions for selected source */}
+      {selectedIds.size === 1 && interactions.some((it) => it.sourceId === Array.from(selectedIds)[0]) && (
+        <div
+          style={{
+            position: "fixed",
+            left: 12,
+            bottom: 64,
+            zIndex: 1200,
+            padding: 8,
+            background: "#fff",
+            border: "1px solid #ddd",
+            borderRadius: 8,
+            maxWidth: 360,
+            boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
+          }}
+        >
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>Connections</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {interactions
+              .filter((it) => it.sourceId === Array.from(selectedIds)[0])
+              .map((it) => (
+                <div key={it.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                  <div style={{ fontSize: 12, color: "#333" }}>
+                    {it.type === "navigation" ? "Navigate" : "Animate"} to {nodeLabelById(it.targetId)}
+                    {it.type === "animation" && it.animation
+                      ? ` (${it.animation.name}${it.animation.durationMs ? `, ${it.animation.durationMs}ms` : ""})`
+                      : ""}
+                  </div>
+                  <button
+                    onClick={() => removeInteraction(it.id)}
+                    style={{ fontSize: 12, padding: "2px 6px", borderRadius: 4, border: "1px solid #eee", background: "#fafafa", cursor: "pointer" }}
+                    title="Remove connection"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+
+      {/* NEW: Add Connection Modal */}
+      {connectOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setConnectOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.35)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 2500,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(560px, 90vw)",
+              background: "#fff",
+              borderRadius: 10,
+              padding: 16,
+              boxShadow: "0 12px 32px rgba(0,0,0,0.25)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+            }}
+          >
+            <div style={{ fontWeight: 700, fontSize: 16 }}>Create Connection</div>
+            <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 8, alignItems: "center" }}>
+              <label style={{ fontSize: 13, color: "#444" }}>From</label>
+              <div style={{ fontSize: 13 }}>
+                {connectSourceId ? nodeLabelById(connectSourceId) : "(none)"}
+              </div>
+
+              <label style={{ fontSize: 13, color: "#444" }}>To</label>
+              <select
+                value={connectTargetId}
+                onChange={(e) => setConnectTargetId(e.target.value)}
+                style={{ padding: 6, borderRadius: 6, border: "1px solid #ddd" }}
+              >
+                <option value="">Select target…</option>
+                {targetOptions
+                  .filter((n) => n?.id && n.id !== connectSourceId)
+                  .map((n) => (
+                    <option key={n.id} value={n.id}>
+                      {(n.name || n.type || "Node") + ` (${n.type})`}
+                    </option>
+                  ))}
+              </select>
+
+              <label style={{ fontSize: 13, color: "#444" }}>Type</label>
+              <select
+                value={connectType}
+                onChange={(e) => setConnectType(e.target.value as Interaction["type"])}
+                style={{ padding: 6, borderRadius: 6, border: "1px solid #ddd" }}
+              >
+                <option value="navigation">Navigation</option>
+                <option value="animation">Animation</option>
+              </select>
+
+              <label style={{ fontSize: 13, color: "#444" }}>Trigger</label>
+              <select
+                value={connectTrigger}
+                onChange={(e) => setConnectTrigger(e.target.value as Interaction["trigger"])}
+                style={{ padding: 6, borderRadius: 6, border: "1px solid #ddd" }}
+              >
+                <option value="onClick">On Click</option>
+                <option value="onTap">On Tap</option>
+              </select>
+
+              {/* Animation options (shown when type=animation) */}
+              {connectType === "animation" && (
+                <>
+                  <label style={{ fontSize: 13, color: "#444" }}>Animation</label>
+                  <select
+                    value={connectAnimationName}
+                    onChange={(e) => setConnectAnimationName(e.target.value as any)}
+                    style={{ padding: 6, borderRadius: 6, border: "1px solid #ddd" }}
+                  >
+                    <option value="none">None</option>
+                    <option value="fade">Fade</option>
+                    <option value="slide">Slide</option>
+                    <option value="zoom">Zoom</option>
+                  </select>
+
+                  <label style={{ fontSize: 13, color: "#444" }}>Duration (ms)</label>
+                  <input
+                    type="number"
+                    value={connectAnimationDuration}
+                    onChange={(e) => setConnectAnimationDuration(parseInt(e.target.value || "300", 10))}
+                    min={0}
+                    step={50}
+                    style={{ padding: 6, borderRadius: 6, border: "1px solid #ddd" }}
+                  />
+
+                  <label style={{ fontSize: 13, color: "#444" }}>Easing</label>
+                  <select
+                    value={connectAnimationEasing}
+                    onChange={(e) => setConnectAnimationEasing(e.target.value as any)}
+                    style={{ padding: 6, borderRadius: 6, border: "1px solid #ddd" }}
+                  >
+                    <option value="linear">Linear</option>
+                    <option value="ease-in">Ease-in</option>
+                    <option value="ease-out">Ease-out</option>
+                    <option value="ease-in-out">Ease-in-out</option>
+                  </select>
+
+                  <label style={{ fontSize: 13, color: "#444" }}>Direction</label>
+                  <select
+                    value={connectAnimationDirection}
+                    onChange={(e) => setConnectAnimationDirection(e.target.value as any)}
+                    style={{ padding: 6, borderRadius: 6, border: "1px solid #ddd" }}
+                  >
+                    <option value="right">Right</option>
+                    <option value="left">Left</option>
+                    <option value="up">Up</option>
+                    <option value="down">Down</option>
+                  </select>
+                </>
+              )}
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
+              <button
+                onClick={() => setConnectOpen(false)}
+                style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #ddd", background: "#fff", cursor: "pointer" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmAddConnection}
+                style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #000000ff", background: "#000000ff", color: "#fff", cursor: "pointer" }}
+              >
+                Add
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Convert Modal */}
       <ConvertModal 

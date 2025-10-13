@@ -257,8 +257,13 @@ export default function PropertiesPanel(props: {
         transition={{ duration: 0.3, ease: "easeOut" }}
         style={{
           width: `${panelWidth}px`,
+<<<<<<< HEAD
           borderLeft: '1px solid rgb(48,48,48)',
           background: 'rgb(48,48,48)',
+=======
+          borderLeft: '1px solid rgb(60,60,60)',
+          background: 'rgb(60,60,60)',
+>>>>>>> origin/adhish1
           color: '#fff',
           padding: '1rem',
           paddingTop: '4rem', // Push down to show reference frame selector
