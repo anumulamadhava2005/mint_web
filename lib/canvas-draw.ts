@@ -80,7 +80,8 @@ export function drawNodes(
   selectedIds: Set<string>,
   transientOffsets: Map<string, { dx: number; dy: number }>,
   rawRoots: NodeInput[] | null,
-  hoveredId?: string | null
+  hoveredId?: string | null,
+  images?: Record<string, HTMLImageElement | string>
 ) {
   // Helper to find the raw node by id
   function findRaw(id: string) {
@@ -265,6 +266,26 @@ export function drawNodes(
     ctx.shadowOffsetY = 0;
     ctx.shadowBlur = 0;
     ctx.setLineDash([]);
+
+    // --- Image rendering ---
+    if (images && (rawNode as any)?.fill?.imageRef && typeof (rawNode as any).fill.imageRef === 'string' && (rawNode as any).fill.imageRef.length > 0) {
+      const imageKey = (rawNode as any).fill.imageRef;
+      const imageData = images[imageKey];
+      
+      if (imageData instanceof HTMLImageElement && imageData.complete) {
+        try {
+          // Save context state for clipping
+          ctx.save();
+          
+          // Draw the image to fill the node bounds
+          ctx.drawImage(imageData, x, y, w, h);
+          
+          ctx.restore();
+        } catch (e) {
+          console.warn('Failed to draw image:', e);
+        }
+      }
+    }
 
     // --- Selection and Hover outlines ---
     if (selectedIds.has(n.id)) {

@@ -36,15 +36,18 @@ const updateNodePositions = (nodes: NodeInput[], moved: Map<string, { dx: number
 
     if (offsets) {
       hasChanged = true
-      const oldBB = node.absoluteBoundingBox ?? { x: 0, y: 0, width: 0, height: 0 }
-      const newBoundingBox = {
-        x: (oldBB.x ?? 0) + offsets.dx,
-        y: (oldBB.y ?? 0) + offsets.dy,
-        width: oldBB.width ?? 0,
-        height: oldBB.height ?? 0,
-      }
       
-      return { ...node, absoluteBoundingBox: newBoundingBox, children: newChildren }
+      // Update x, y properties on the node itself for persistence
+      // Do NOT update absoluteBoundingBox - let useDrawable hook recalculate based on x,y
+      const newX = ((node as any).x ?? 0) + offsets.dx
+      const newY = ((node as any).y ?? 0) + offsets.dy
+      
+      return { 
+        ...node, 
+        x: newX,
+        y: newY,
+        children: newChildren 
+      } as NodeInput
     }
 
     if (hasChanged) {
@@ -106,7 +109,7 @@ export default function CanvasStage(props: {
   const isInitialized = useRef(false)
   const hasReceivedData = useRef(false)
 
-  // Update state ref when props change
+  // Update state ref when props change (syncs React state with our high-performance ref)
   useEffect(() => {
     stateRef.current = { ...stateRef.current, scale, offset, selectedIds, drawableNodes, rawRoots }
   }, [scale, offset, selectedIds, drawableNodes, rawRoots])
@@ -125,19 +128,16 @@ export default function CanvasStage(props: {
   // Debug logging
   useEffect(() => {
     console.log('=== Canvas Debug Info ===');
-    console.log('rawRoots:', rawRoots);
+    console.log('rawRoots:', rawRoots ? 'loaded' : 'null');
     console.log('drawableNodes length:', drawableNodes?.length);
     console.log('scale:', scale);
     console.log('offset:', offset);
-    console.log('viewportSize:', viewportSize);
-    console.log('isInitialized:', isInitialized.current);
-    console.log('hasReceivedData:', hasReceivedData.current);
     console.log('========================');
-  }, [rawRoots, drawableNodes, scale, offset, viewportSize]);
+  }, [rawRoots, drawableNodes, scale, offset]);
 
-  // Track when we receive actual data
+  // Track when we receive actual data from parent
   useEffect(() => {
-    if (rawRoots && rawRoots.length > 0) {
+    if (rawRoots && rawRoots.length > 0 && !hasReceivedData.current) {
       hasReceivedData.current = true;
       console.log('Data received from parent');
     }
@@ -196,7 +196,7 @@ export default function CanvasStage(props: {
     return { wx, wy, sx, sy }
   }, [])
 
-  // FIXED: Enhanced state persistence functions
+  // State persistence functions
   const saveStateToStorage = useCallback(() => {
     if (!hasUserChanges.current || !isInitialized.current) return
     
@@ -211,80 +211,44 @@ export default function CanvasStage(props: {
       };
       localStorage.setItem('canvas-stage-state', JSON.stringify(state));
       localStorage.setItem('canvas-session-timestamp', Date.now().toString());
-      console.log('Canvas state saved successfully');
     } catch (e) {
       console.warn('Failed to save state:', e);
     }
   }, []);
 
   const loadStateFromStorage = useCallback(() => {
-    if (hasLoadedFromStorage.current) return null;
+    if (hasLoadedFromStorage.current) return;
     
     try {
       const stored = localStorage.getItem('canvas-stage-state');
-      if (!stored) {
-        console.log('No stored state found');
-        return null;
-      }
+      if (!stored) return;
       
       const state = JSON.parse(stored);
       
-      // Version check
-      if (state.version !== STORAGE_VERSION) {
-        console.log('Storage version mismatch, clearing');
+      if (state.version !== STORAGE_VERSION || (Date.now() - state.lastModified) > MAX_STORAGE_AGE) {
         localStorage.removeItem('canvas-stage-state');
-        return null;
+        return;
       }
       
-      // Age check
-      const isRecent = state.lastModified && 
-        (Date.now() - state.lastModified) < MAX_STORAGE_AGE;
-      
-      if (!isRecent) {
-        console.log('Stored state too old, clearing');
-        localStorage.removeItem('canvas-stage-state');
-        return null;
-      }
-      
-      // FIXED: Only restore rawRoots if we don't already have fresh data
-      // This prevents storage from overriding API data
       if (!rawRoots || rawRoots.length === 0) {
-        if (state.rawRoots && Array.isArray(state.rawRoots) && state.rawRoots.length > 0) {
-          console.log('Restoring rawRoots from storage (no fresh data available)');
+        if (state.rawRoots?.length > 0) {
           setRawRoots(state.rawRoots);
-          
-          window.dispatchEvent(new CustomEvent('canvas-loaded-from-storage', {
-            detail: { hasStoredData: true }
-          }));
+          window.dispatchEvent(new CustomEvent('canvas-loaded-from-storage', { detail: { hasStoredData: true } }));
         }
-      } else {
-        console.log('Skipping rawRoots restore - using fresh data from parent');
       }
       
-      // Always restore view state (scale, offset, selection)
-      if (typeof state.scale === 'number' && state.scale > 0) {
-        console.log('Restoring scale:', state.scale);
-        setScale(state.scale);
-      }
-      if (state.offset && typeof state.offset === 'object') {
-        console.log('Restoring offset:', state.offset);
-        setOffset(state.offset);
-      }
-      if (Array.isArray(state.selectedIds)) {
-        setSelectedIds(new Set(state.selectedIds));
-      }
+      if (typeof state.scale === 'number') setScale(state.scale);
+      if (typeof state.offset === 'object') setOffset(state.offset);
+      if (Array.isArray(state.selectedIds)) setSelectedIds(new Set(state.selectedIds));
       
       hasLoadedFromStorage.current = true;
       console.log('Canvas view state loaded from storage');
-      return state;
     } catch (e) {
       console.warn('Failed to load state:', e);
       localStorage.removeItem('canvas-stage-state');
-      return null;
     }
   }, [setScale, setOffset, setSelectedIds, setRawRoots, rawRoots]);
 
-  // FIXED: Optimized rendering with proper error handling
   const requestRedraw = useCallback(() => {
     if (framePendingRef.current) return
     framePendingRef.current = true
@@ -294,148 +258,115 @@ export default function CanvasStage(props: {
       
       const canvas = canvasRef.current
       const overlay = overlayRef.current
-      
-      if (!canvas || !overlay) {
-        console.error('Canvas elements not found');
-        return
-      }
+      if (!canvas || !overlay) return
       
       const ctx = canvas.getContext("2d")
       const octx = overlay.getContext("2d")
+      if (!ctx || !octx) return
       
-      if (!ctx || !octx) {
-        console.error('Canvas contexts not available');
-        return
+      const { 
+        scale, offset, selectedIds, isMarquee, hoveredId, 
+        alignmentGuides, drawableNodes: currentDrawableNodes 
+      } = stateRef.current
+        
+      const dpr = window.devicePixelRatio || 1
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      octx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      octx.clearRect(0, 0, overlay.width, overlay.height)
+      
+      ctx.fillStyle = "rgba(236, 231, 231, 1)"
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      
+      // ✅ PERFORMANCE OPTIMIZATION: View Culling
+      // Calculate the visible area in world coordinates.
+      const visibleWorldRect = {
+        x: -offset.x / scale,
+        y: -offset.y / scale,
+        w: viewportSize.width / scale,
+        h: viewportSize.height / scale,
+      };
+
+      // Filter nodes to only include those intersecting the viewport.
+      const visibleNodes = currentDrawableNodes.filter(node => 
+        rectsIntersect(visibleWorldRect, { x: node.x, y: node.y, w: node.width, h: node.height })
+      );
+
+      // Draw grid only if canvas is empty
+      if (visibleNodes.length === 0) {
+        drawGrid(ctx, viewportSize.width, viewportSize.height, offset, scale, 100, 20)
+      }
+      
+      // Draw only the visible nodes
+      drawNodes(ctx, visibleNodes, offset, scale, selectedIds, dragOffsetsRef.current, stateRef.current.rawRoots, hoveredId, loadedImages)
+
+      // Marquee selection
+      if (isMarquee && marqueeStart.current && lastPointer.current) {
+        const s1x = offset.x + marqueeStart.current.wx * scale
+        const s1y = offset.y + marqueeStart.current.wy * scale
+        const rect = overlay.getBoundingClientRect()
+        const s2x = lastPointer.current.x - rect.left
+        const s2y = lastPointer.current.y - rect.top
+        const mx = Math.min(s1x, s2x), my = Math.min(s1y, s2y)
+        const mw = Math.abs(s2x - s1x), mh = Math.abs(s2y - s1y)
+          
+        octx.fillStyle = "rgba(16, 185, 129, 0.12)"
+        octx.strokeStyle = "#10b981"
+        octx.lineWidth = 1.5
+        octx.fillRect(mx, my, mw, mh)
+        octx.strokeRect(mx, my, mw, mh)
       }
 
-      try {
-        const { 
-          scale, 
-          offset, 
-          selectedIds, 
-          isMarquee, 
-          hoveredId, 
-          alignmentGuides, 
-          drawableNodes: currentDrawableNodes 
-        } = stateRef.current
-        
-        console.log('Rendering frame with', currentDrawableNodes.length, 'nodes');
-        
-        const dpr = window.devicePixelRatio || 1
-        
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-        octx.setTransform(dpr, 0, 0, dpr, 0, 0)
-        ctx.clearRect(0, 0, canvas.width, canvas.height)
-        octx.clearRect(0, 0, overlay.width, overlay.height)
-        
-        // Background
-        ctx.fillStyle = "rgba(236, 231, 231, 1)"
-        ctx.fillRect(0, 0, canvas.width, canvas.height)
+      // Overlays
+      if (selectedFrame) drawReferenceFrameOverlay(octx, selectedFrame, offset, scale)
 
-        if (currentDrawableNodes.length === 0) {
-          drawGrid(ctx, viewportSize.width, viewportSize.height, offset, scale, 100, 20)
-        }
-        
-        // Draw nodes
-        drawNodes(ctx, currentDrawableNodes, offset, scale, selectedIds, dragOffsetsRef.current, stateRef.current.rawRoots, hoveredId)
-
-        // Marquee selection
-        if (isMarquee && marqueeStart.current && lastPointer.current) {
-          const s1x = offset.x + marqueeStart.current.wx * scale
-          const s1y = offset.y + marqueeStart.current.wy * scale
-          const rect = overlay.getBoundingClientRect()
-          const s2x = lastPointer.current.x - rect.left
-          const s2y = lastPointer.current.y - rect.top
-          const mx = Math.min(s1x, s2x), my = Math.min(s1y, s2y)
-          const mw = Math.abs(s2x - s1x), mh = Math.abs(s2y - s1y)
-          
-          octx.fillStyle = "rgba(16, 185, 129, 0.12)"
-          octx.strokeStyle = "#10b981"
-          octx.lineWidth = 1.5
-          octx.fillRect(mx, my, mw, mh)
-          octx.strokeRect(mx, my, mw, mh)
-        }
-
-        // Reference frame overlay
-        if (selectedFrame) drawReferenceFrameOverlay(octx, selectedFrame, offset, scale)
-
-        // Alignment guides
-        if (alignmentGuides.verticalLines.length > 0 || alignmentGuides.horizontalLines.length > 0) {
-          octx.strokeStyle = "rgba(147, 51, 234, 0.8)"
-          octx.lineWidth = 1
-          octx.setLineDash([2, 3])
-          octx.beginPath()
-          
-          alignmentGuides.verticalLines.forEach(guide => {
-            const sx = offset.x + guide.x * scale
-            octx.moveTo(sx, 0)
-            octx.lineTo(sx, viewportSize.height)
-          })
-          
-          alignmentGuides.horizontalLines.forEach(guide => {
-            const sy = offset.y + guide.y * scale
-            octx.moveTo(0, sy)
-            octx.lineTo(viewportSize.width, sy)
-          })
-          
-          octx.stroke()
-          octx.setLineDash([])
-        }
-      } catch (error) {
-        console.error('Canvas render error:', error)
+      if (alignmentGuides.verticalLines.length > 0 || alignmentGuides.horizontalLines.length > 0) {
+        octx.strokeStyle = "rgba(147, 51, 234, 0.8)"
+        octx.lineWidth = 1
+        octx.setLineDash([2, 3])
+        octx.beginPath()
+        alignmentGuides.verticalLines.forEach(guide => {
+          const sx = offset.x + guide.x * scale
+          octx.moveTo(sx, 0)
+          octx.lineTo(sx, viewportSize.height)
+        })
+        alignmentGuides.horizontalLines.forEach(guide => {
+          const sy = offset.y + guide.y * scale
+          octx.moveTo(0, sy)
+          octx.lineTo(viewportSize.width, sy)
+        })
+        octx.stroke()
+        octx.setLineDash([])
       }
     })
-  }, [viewportSize])
+  }, [viewportSize, selectedFrame])
 
-  // FIXED: Initialize component properly - only load storage if no data received yet
+  // Initialization
   useEffect(() => {
-    if (!isInitialized.current && canvasRef.current && overlayRef.current) {
-      console.log('Initializing canvas component...');
-      
-      // Only load from storage if we haven't received fresh data
+    if (!isInitialized.current && canvasRef.current) {
       if (!hasReceivedData.current) {
-        console.log('No data received yet, checking storage...');
         loadStateFromStorage();
-      } else {
-        console.log('Fresh data already received, skipping storage load');
       }
-      
       isInitialized.current = true;
-      
-      // Force initial redraw
-      setTimeout(() => {
-        requestRedraw();
-      }, 100);
+      setTimeout(requestRedraw, 100);
     }
   }, [loadStateFromStorage, requestRedraw]);
 
-  // FIXED: Debounced save with user change tracking
+  // Debounced save
   useEffect(() => {
     if (!isInitialized.current) return;
-    
     const timeoutId = setTimeout(() => {
-      if (hasUserChanges.current) {
-        saveStateToStorage();
-      }
+      if (hasUserChanges.current) saveStateToStorage();
     }, 1000);
-    
     return () => clearTimeout(timeoutId);
   }, [scale, offset, selectedIds, rawRoots, saveStateToStorage]);
 
-  // Listen for authentication events
+  // Auth event listeners
   useEffect(() => {
-    const handleAuthWarning = (e: CustomEvent) => {
-      console.warn('Auth warning:', e.detail.message);
-    };
-
-    const handleAuthConfirmed = (e: CustomEvent) => {
-      console.log('Authentication confirmed');
-      hasUserChanges.current = true;
-    };
-
+    const handleAuthWarning = (e: CustomEvent) => console.warn('Auth warning:', e.detail.message);
+    const handleAuthConfirmed = () => hasUserChanges.current = true;
     window.addEventListener('auth-warning', handleAuthWarning as EventListener);
     window.addEventListener('auth-confirmed', handleAuthConfirmed as EventListener);
-
     return () => {
       window.removeEventListener('auth-warning', handleAuthWarning as EventListener);
       window.removeEventListener('auth-confirmed', handleAuthConfirmed as EventListener);
@@ -453,82 +384,12 @@ export default function CanvasStage(props: {
         c.style.width = `${w}px`; c.style.height = `${h}px`;
         c.width = Math.floor(w * dpr); c.height = Math.floor(h * dpr);
       });
-      
-      // Request redraw directly without dependency
-      if (framePendingRef.current) return;
-      framePendingRef.current = true;
-      requestAnimationFrame(() => {
-        framePendingRef.current = false;
-        const canvas = canvasRef.current;
-        const overlay = overlayRef.current;
-        if (!canvas || !overlay) return;
-        
-        const ctx = canvas.getContext("2d");
-        const octx = overlay.getContext("2d");
-        if (!ctx || !octx) return;
-
-        const { scale, offset, selectedIds, isMarquee, hoveredId, alignmentGuides, drawableNodes: currentDrawableNodes } = stateRef.current;
-        const dpr = window.devicePixelRatio || 1;
-        
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        octx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        octx.clearRect(0, 0, overlay.width, overlay.height);
-        
-        ctx.fillStyle = "rgba(236, 231, 231, 1)";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        if (currentDrawableNodes.length === 0) {
-          drawGrid(ctx, w, h, offset, scale, 100, 20);
-        }
-        
-        drawNodes(ctx, currentDrawableNodes, offset, scale, selectedIds, dragOffsetsRef.current, stateRef.current.rawRoots, hoveredId);
-
-        if (isMarquee && marqueeStart.current && lastPointer.current) {
-          const s1x = offset.x + marqueeStart.current.wx * scale;
-          const s1y = offset.y + marqueeStart.current.wy * scale;
-          const rect = overlay.getBoundingClientRect();
-          const s2x = lastPointer.current.x - rect.left;
-          const s2y = lastPointer.current.y - rect.top;
-          const mx = Math.min(s1x, s2x), my = Math.min(s1y, s2y);
-          const mw = Math.abs(s2x - s1x), mh = Math.abs(s2y - s1y);
-          
-          octx.fillStyle = "rgba(16, 185, 129, 0.12)";
-          octx.strokeStyle = "#10b981";
-          octx.lineWidth = 1.5;
-          octx.fillRect(mx, my, mw, mh);
-          octx.strokeRect(mx, my, mw, mh);
-        }
-
-        if (selectedFrame) drawReferenceFrameOverlay(octx, selectedFrame, offset, scale);
-
-        if (alignmentGuides.verticalLines.length > 0 || alignmentGuides.horizontalLines.length > 0) {
-          octx.strokeStyle = "rgba(147, 51, 234, 0.8)";
-          octx.lineWidth = 1;
-          octx.setLineDash([2, 3]);
-          octx.beginPath();
-          
-          alignmentGuides.verticalLines.forEach(guide => {
-            const sx = offset.x + guide.x * scale;
-            octx.moveTo(sx, 0);
-            octx.lineTo(sx, h);
-          });
-          
-          alignmentGuides.horizontalLines.forEach(guide => {
-            const sy = offset.y + guide.y * scale;
-            octx.moveTo(0, sy);
-            octx.lineTo(w, sy);
-          });
-          
-          octx.stroke();
-          octx.setLineDash([]);
-        }
-      });
+      requestRedraw();
     };
     window.addEventListener("resize", handleResize, { passive: true });
     handleResize();
     return () => window.removeEventListener("resize", handleResize);
-  }, []); // Empty dependency array - only run on mount/unmount
+  }, [requestRedraw]);
 
   // Keyboard handling
   useEffect(() => {
@@ -558,53 +419,60 @@ export default function CanvasStage(props: {
     };
   }, []);
   
-  // FIXED: Smoother wheel handling with RAF throttling
+  // ✅ PERFORMANCE OPTIMIZATION: High-performance wheel handler
+  // This updates the canvas view directly without triggering React re-renders on every scroll event.
+  // The final state is synced back to React after the gesture ends.
+  const wheelEndTimer = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     const target = overlayRef.current;
     if (!target) return;
     
-    let wheelFrameId: number | null = null;
-    
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       
-      if (wheelFrameId) {
-        cancelAnimationFrame(wheelFrameId);
+      const rect = target.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      
+      // Directly mutate the ref for immediate visual feedback
+      const { scale: currentScale, offset: currentOffset } = stateRef.current;
+
+      if (e.ctrlKey || e.metaKey) { // Zooming
+        const zoomFactor = Math.exp(-e.deltaY * 0.005);
+        const newScale = Math.max(0.05, Math.min(20, currentScale * zoomFactor));
+        const worldX = (mouseX - currentOffset.x) / currentScale;
+        const worldY = (mouseY - currentOffset.y) / currentScale;
+        stateRef.current.offset = {
+          x: mouseX - worldX * newScale,
+          y: mouseY - worldY * newScale
+        };
+        stateRef.current.scale = newScale;
+      } else { // Panning
+        stateRef.current.offset = {
+          x: currentOffset.x - e.deltaX,
+          y: currentOffset.y - e.deltaY
+        };
       }
       
-      wheelFrameId = requestAnimationFrame(() => {
-        const rect = target.getBoundingClientRect();
-        const mouseX = e.clientX - rect.left;
-        const mouseY = e.clientY - rect.top;
-        const { scale: currentScale, offset: currentOffset } = stateRef.current;
-
-        if (e.ctrlKey || e.metaKey) {
-          const zoomFactor = Math.exp(-e.deltaY * 0.005);
-          const newScale = Math.max(0.05, Math.min(20, currentScale * zoomFactor));
-          const worldX = (mouseX - currentOffset.x) / currentScale;
-          const worldY = (mouseY - currentOffset.y) / currentScale;
-          const newOffsetX = mouseX - worldX * newScale;
-          const newOffsetY = mouseY - worldY * newScale;
-          setScale(newScale);
-          setOffset({ x: newOffsetX, y: newOffsetY });
-          hasUserChanges.current = true;
-        } else {
-          setOffset({ x: currentOffset.x - e.deltaX, y: currentOffset.y - e.deltaY });
-          hasUserChanges.current = true;
-        }
-        
-        wheelFrameId = null;
-      });
+      requestRedraw();
+      hasUserChanges.current = true;
+      
+      // After the wheel events stop, update the actual React state
+      if (wheelEndTimer.current) clearTimeout(wheelEndTimer.current);
+      wheelEndTimer.current = setTimeout(() => {
+        setScale(stateRef.current.scale);
+        setOffset(stateRef.current.offset);
+      }, 150);
     };
     
     target.addEventListener("wheel", onWheel, { passive: false });
     return () => {
       target.removeEventListener("wheel", onWheel);
-      if (wheelFrameId) cancelAnimationFrame(wheelFrameId);
+      if (wheelEndTimer.current) clearTimeout(wheelEndTimer.current);
     };
-  }, [setScale, setOffset]);
+  }, [setScale, setOffset, requestRedraw]);
 
-  // FIXED: Optimized pointer interactions with RAF throttling
+  // Pointer interactions with RAF throttling
   useEffect(() => {
     const target = overlayRef.current;
     if (!target) return;
@@ -631,74 +499,12 @@ export default function CanvasStage(props: {
       }
 
       let hitId: string | null = null;
+      // Iterate backwards to hit top-most items first
       for (let i = drawableNodes.length - 1; i >= 0; i--) {
         const n = drawableNodes[i];
         if (pointInRect(wx, wy, { x: n.x, y: n.y, w: n.width, h: n.height })) {
           hitId = n.id;
           break;
-        }
-      }
-
-      // Extended hit testing for images
-      if (!hitId) {
-        for (let i = drawableNodes.length - 1; i >= 0; i--) {
-          const n = drawableNodes[i]
-          let nodeData: any = null
-          if (rawRoots) {
-            const findNode = (node: any): any => {
-              if (node.id === n.id) return node
-              if (node.children) {
-                for (const child of node.children) {
-                  const found = findNode(child)
-                  if (found) return found
-                }
-              }
-              return null
-            }
-            for (const root of rawRoots) {
-              const found = findNode(root)
-              if (found) {
-                nodeData = found
-                break
-              }
-            }
-          }
-
-          if (nodeData?.fill?.type === "IMAGE") {
-            const img = loadedImages[n.id] || loadedImages[n.name]
-            if (img && img.complete && img.naturalWidth && img.naturalHeight) {
-              const x = n.x, y = n.y, w = n.width, h = n.height
-              let imageBounds = { x, y, w, h }
-
-              const fitMode = nodeData.fill?.fit || "cover"
-              if (fitMode === "cover") {
-                const ir = img.naturalWidth / img.naturalHeight
-                const br = w / h
-                if (ir > br) {
-                  const newH = h, newW = h * ir
-                  imageBounds = { x: x + (w - newW) / 2, y: y, w: newW, h: newH }
-                } else {
-                  const newW = w, newH = w / ir
-                  imageBounds = { x: x, y: y + (h - newH) / 2, w: newW, h: newH }
-                }
-              } else if (fitMode === "contain") {
-                const ir = img.naturalWidth / img.naturalHeight
-                const br = w / h
-                if (ir > br) {
-                  const newW = w, newH = w / ir
-                  imageBounds = { x: x, y: y + (h - newH) / 2, w: newW, h: newH }
-                } else {
-                  const newH = h, newW = h * ir
-                  imageBounds = { x: x + (w - newW) / 2, y: y, w: newW, h: newH }
-                }
-              }
-
-              if (pointInRect(wx, wy, imageBounds)) {
-                hitId = n.id
-                break
-              }
-            }
-          }
         }
       }
 
@@ -731,10 +537,7 @@ export default function CanvasStage(props: {
 
     const onPointerMove = (e: PointerEvent) => {
       if (!lastPointer.current) return;
-
-      if (motionFrameId) {
-        cancelAnimationFrame(motionFrameId);
-      }
+      if (motionFrameId) cancelAnimationFrame(motionFrameId);
 
       motionFrameId = requestAnimationFrame(() => {
         if (modeRef.current === "click") {
@@ -767,8 +570,7 @@ export default function CanvasStage(props: {
           let dy = wy - dragStartWorld.current.wy;
           
           const guides = { verticalLines: [] as any[], horizontalLines: [] as any[] };
-          let finalDx = dx;
-          let finalDy = dy;
+          let finalDx = dx, finalDy = dy;
 
           const primaryNodeId = originalPositions.current.keys().next().value;
           if (primaryNodeId) {
@@ -785,11 +587,11 @@ export default function CanvasStage(props: {
 
                   if (Math.abs(nodeCenterX - parentCenterX) < ALIGNMENT_THRESHOLD) {
                       finalDx = parentCenterX - node.width / 2 - originalPos.x;
-                      guides.verticalLines.push({ x: parentCenterX, parentId: parent.id });
+                      guides.verticalLines.push({ x: parentCenterX });
                   }
                   if (Math.abs(nodeCenterY - parentCenterY) < ALIGNMENT_THRESHOLD) {
                       finalDy = parentCenterY - node.height / 2 - originalPos.y;
-                      guides.horizontalLines.push({ y: parentCenterY, parentId: parent.id });
+                      guides.horizontalLines.push({ y: parentCenterY });
                   }
               }
           }
@@ -825,14 +627,10 @@ export default function CanvasStage(props: {
 
     const onPointerUp = (e: PointerEvent) => {
       try { target.releasePointerCapture(e.pointerId); } catch(err) {/* ignore */}
-      
-      if (motionFrameId) {
-        cancelAnimationFrame(motionFrameId);
-        motionFrameId = null;
-      }
+      if (motionFrameId) cancelAnimationFrame(motionFrameId);
       
       if (modeRef.current === 'pan') {
-          setOffset(panState);
+          setOffset(panState); // Commit final pan position to React state
           hasUserChanges.current = true;
       }
       
@@ -851,12 +649,10 @@ export default function CanvasStage(props: {
             x: Math.min(marqueeStart.current.wx, endX), y: Math.min(marqueeStart.current.wy, endY),
             w: Math.abs(endX - marqueeStart.current.wx), h: Math.abs(endY - marqueeStart.current.wy)
         };
-        const nextIds = new Set<string>();
-        for (const n of drawableNodes) {
-            if (rectsIntersect(sel, { x: n.x, y: n.y, w: n.width, h: n.height })) {
-                nextIds.add(n.id);
-            }
-        }
+        const nextIds = new Set(drawableNodes
+            .filter(n => rectsIntersect(sel, { x: n.x, y: n.y, w: n.width, h: n.height }))
+            .map(n => n.id)
+        );
         setSelectedIds(nextIds);
       }
 
@@ -879,58 +675,34 @@ export default function CanvasStage(props: {
       window.removeEventListener("pointerup", onPointerUp);
       if (motionFrameId) cancelAnimationFrame(motionFrameId);
     };
-  }, [toWorld, drawableNodes, setRawRoots, setSelectedIds, setOffset, requestRedraw, nodeMap, childToParentMap, rawRoots, selectedIds, loadedImages]);
+  }, [toWorld, drawableNodes, setRawRoots, setSelectedIds, setOffset, requestRedraw, nodeMap, childToParentMap, rawRoots, selectedIds]);
 
-  // Logout cleanup handler
+  // Logout cleanup
   useEffect(() => {
     const handleLogout = () => {
       try {
         localStorage.removeItem('canvas-stage-state');
         localStorage.removeItem('canvas-session-timestamp');
-        hasUserChanges.current = false;
-        hasLoadedFromStorage.current = false;
-        isInitialized.current = false;
-      } catch (e) {
-        console.warn('Failed to clear state:', e);
-      }
+      } catch (e) { console.warn('Failed to clear state:', e); }
     };
-
     window.addEventListener('logout', handleLogout);
     return () => window.removeEventListener('logout', handleLogout);
   }, []);
 
-  // FIXED: Redraw when data arrives or changes
+  // Redraw when data arrives or changes
   const prevDrawableNodesLengthRef = useRef(0);
   useEffect(() => {
-    if (isInitialized.current && drawableNodes.length > 0) {
-      // Only log and redraw if the length actually changed
-      if (prevDrawableNodesLengthRef.current !== drawableNodes.length) {
-        console.log('Data updated, triggering redraw');
-        prevDrawableNodesLengthRef.current = drawableNodes.length;
-        requestRedraw();
-      }
+    if (isInitialized.current && drawableNodes.length !== prevDrawableNodesLengthRef.current) {
+      prevDrawableNodesLengthRef.current = drawableNodes.length;
+      requestRedraw();
     }
   }, [drawableNodes, requestRedraw]);
 
-  // Redraw triggers for view state
+  // Redraw triggers for view state changes from props
   useEffect(() => {
-    if (isInitialized.current) {
-      requestRedraw();
-    }
+    if (isInitialized.current) requestRedraw();
   }, [selectedIds, offset, scale, requestRedraw]);
 
-  // Animation frame ref
-  const animationFrameRef = useRef<number | null>(null);
-
-  // Cleanup
-  useEffect(() => {
-    return () => {
-      if (animationFrameRef.current !== null) {
-        cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
-      }
-    };
-  }, []);
 
   return (
     <>
@@ -962,33 +734,27 @@ function useImageMap(map: ImageMap) {
     const next: Record<string, HTMLImageElement> = {};
     const promises: Promise<void>[] = [];
 
-    const entries = Object.entries(map);
-    entries.forEach(([key, val]) => {
+    Object.entries(map).forEach(([key, val]) => {
       if (typeof val !== "string") {
-        const img = val as HTMLImageElement;
-        if (img?.complete && img.naturalWidth > 0) next[key] = img;
+        if (val?.complete && val.naturalWidth > 0) next[key] = val;
         return;
       }
-
-      const src = val as string;
       const promise = new Promise<void>((resolve) => {
         const img = new Image();
-        img.crossOrigin = "anonymous";
-        img.onload = () => { 
-          if (alive && img.naturalWidth > 0) next[key] = img;
-          resolve(); 
-        };
-        img.onerror = () => { resolve(); };
-        img.src = src;
+        // Don't set crossOrigin for data URLs or blob URLs
+        if (!val.startsWith('data:') && !val.startsWith('blob:')) {
+          img.crossOrigin = "anonymous";
+        }
+        img.onload = () => { if (alive) next[key] = img; resolve(); };
+        img.onerror = () => { console.warn('Failed to load image:', key, val); resolve(); };
+        img.src = val as string;
       });
       promises.push(promise);
     });
 
     if (promises.length > 0) {
         Promise.all(promises).then(() => {
-            if (alive && Object.keys(next).length > 0) {
-              setState(prev => ({ ...prev, ...next }));
-            }
+            if (alive) setState(prev => ({ ...prev, ...next }));
         });
     } else if (Object.keys(next).length > 0) {
         setState(prev => ({ ...prev, ...next }));

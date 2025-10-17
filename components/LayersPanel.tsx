@@ -87,6 +87,9 @@ const SortableLayer: React.FC<{
             : "text-gray-200 hover:bg-gray-600/40"
           }
         `}
+        style={isSelected ? {
+          border: '1px solid rgba(196, 181, 253, 0.4)'
+        } : {}}
         onClick={(e) => {
           e.stopPropagation()
           onSelect(layer.id)
@@ -196,6 +199,9 @@ const ChildLayer: React.FC<{
             : "text-gray-200 hover:bg-gray-600/40"
           }
         `}
+        style={isSelected ? {
+          border: '1px solid rgba(196, 181, 253, 0.4)'
+        } : {}}
         onClick={(e) => {
           e.stopPropagation()
           onSelect(layer.id)
