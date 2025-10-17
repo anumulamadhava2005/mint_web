@@ -422,8 +422,22 @@ export default function CanvasStage(props: {
       
       // Directly mutate the ref for immediate visual feedback
       const { scale: currentScale, offset: currentOffset } = stateRef.current;
+
+      const DOM_DELTA_PIXEL = 0;
+      const DOM_DELTA_LINE = 1;
+      const DOM_DELTA_PAGE = 2;
+
+      const deltaFactor = ((): number => {
+        if (e.deltaMode === DOM_DELTA_PIXEL) return 1;
+        if (e.deltaMode === DOM_DELTA_LINE) return 16; // typical line height
+        return window.innerHeight; // page
+      })();
+
+      const dX = e.deltaX * deltaFactor;
+      const dY = e.deltaY * deltaFactor;
+
       if (e.ctrlKey || e.metaKey) { // Zooming
-        const zoomFactor = Math.exp(-e.deltaY * 0.005);
+        const zoomFactor = Math.exp(-dY * 0.0012);
         const newScale = Math.max(0.05, Math.min(20, currentScale * zoomFactor));
         const worldX = (mouseX - currentOffset.x) / currentScale;
         const worldY = (mouseY - currentOffset.y) / currentScale;
@@ -437,9 +451,11 @@ export default function CanvasStage(props: {
         setScale(newScale);
         setOffset(newOffset);
       } else { // Panning
+        // Multiply by devicePixelRatio to make panning consistent across DPRs
+        const dpr = window.devicePixelRatio || 1;
         const newOffset = {
-          x: currentOffset.x - e.deltaX,
-          y: currentOffset.y - e.deltaY
+          x: currentOffset.x - dX * dpr,
+          y: currentOffset.y - dY * dpr
         };
         stateRef.current.offset = newOffset;
         setOffset(newOffset);
@@ -536,10 +552,14 @@ export default function CanvasStage(props: {
         lastPointer.current = { x: e.clientX, y: e.clientY };
         
         if (modeRef.current === "pan") {
-          // Use calculated delta for panning - works reliably for both mouse and trackpad
-          panState.x += deltaX;
-          panState.y += deltaY;
-          stateRef.current.offset = panState;
+          // Use client deltas rather than movementX/movementY to avoid inconsistencies
+          const last = lastPointer.current || { x: e.clientX, y: e.clientY };
+          const dx = e.clientX - last.x;
+          const dy = e.clientY - last.y;
+          panState.x += dx;
+          panState.y += dy;
+          stateRef.current.offset = { x: panState.x, y: panState.y };
+          lastPointer.current = { x: e.clientX, y: e.clientY };
           requestRedraw();
           return;
         }

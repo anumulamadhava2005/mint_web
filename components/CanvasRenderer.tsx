@@ -41,8 +41,7 @@ export function CanvasRenderer({ nodes, scale, offset, setOffset, selectedIds, s
             ? `${(rest.corners.topLeft ?? 0) * scale}px ${(rest.corners.topRight ?? 0) * scale}px ${(rest.corners.bottomRight ?? 0) * scale}px ${(rest.corners.bottomLeft ?? 0) * scale}px`
             : undefined,
       boxShadow: rest.effects?.map((e) => e.boxShadow).join(", ") || undefined,
-      transform: `scale(${scale})`,
-      transformOrigin: "top left",
+  // No transform: sizes and positions are already scaled to avoid double-scaling
     }
 
     if (node.type === "TEXT" && node.text) {
@@ -151,7 +150,7 @@ export function CanvasRenderer({ nodes, scale, offset, setOffset, selectedIds, s
       ref={containerRef}
       className={styles.root}
       onClick={() => setSelectedIds(new Set())}
-      style={{ cursor: isDragging ? "grabbing" : "grab" }}
+      style={{ cursor: isDragging ? "grabbing" : "grab", overflow: 'hidden' }}
     >
       <div className={styles.inner}>{nodes.map(renderNode)}</div>
     </div>
