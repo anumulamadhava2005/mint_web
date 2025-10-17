@@ -2,6 +2,7 @@
 
 import { useMemo } from "react"
 import React from "react"
+import styles from "./css/SectionDropdown.module.css"
 
 type NodeInput = {
   id: string
@@ -41,18 +42,11 @@ export default function SectionDropdown(props: {
   }
 
   return (
-    <div className="relative">
+    <div className={styles.wrapper}>
       <select
         value={selectedId || ""}
         onChange={(e) => handleFrameSelect(e.target.value)}
-        className="w-full appearance-none rounded border border-gray-700 text-gray-300 px-2 py-1 pr-6 text-sm focus:outline-none focus:border-gray-500 transition-colors"
-        style={{
-          backgroundColor: 'rgb(55,55,55)',
-          backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23999' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'%3E%3Cpolyline points='6 8 10 12 14 8'%3E%3C/polyline%3E%3C/svg%3E\")",
-          backgroundPosition: "right 0.25rem center",
-          backgroundRepeat: "no-repeat",
-          backgroundSize: "1em",
-        }}
+        className={styles.select}
       >
         <option value="">Home Page</option>
         {sections.map((section) => (
@@ -61,6 +55,11 @@ export default function SectionDropdown(props: {
           </option>
         ))}
       </select>
+      <div className={styles.chevron}>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="16" height="16">
+          <polyline points="6 8 10 12 14 8"></polyline>
+        </svg>
+      </div>
     </div>
   )
 }

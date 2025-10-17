@@ -12,8 +12,16 @@ import { useDrawable } from "../../hooks/useDrawable";
 import { NodeInput, ReferenceFrame } from "../../lib/figma-types";
 import Sidebar from "../../components/Sidebar";
 import { Home } from "../../components/home";
-import { ProjectsPage } from "../../components/ProjectsPage";
-import Spinner from "../../components/Spinner";
+import FrameDock from "../../components/FrameDock";
+import dynamic from 'next/dynamic';
+
+
+
+// Prevent SSR for ProjectsPage to avoid hydration mismatch
+const ProjectsPage = dynamic(
+  () => import('../../components/ProjectsPage'),
+  { ssr: false, loading: () => null }
+);
 import styles from "./page.module.css";
 
 // NEW: interaction type for element/frame connections
@@ -75,11 +83,23 @@ function HomePage() {
   
   const [showConverter, setShowConverter] = useState(false);
   const [showProjects, setShowProjects] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  // On client mount, mark mounted and show projects if URL hash is #projects
+  useEffect(() => {
+    setMounted(true);
+    if (window.location.hash === '#projects') {
+      setShowProjects(true);
+    }
+  }, []);
+
   const [user, setUser] = useState<any>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [rawRoots, setRawRoots] = useState<NodeInput[] | null>(null);
+  const [originalRawRoots, setOriginalRawRoots] = useState<NodeInput[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [lastFileKey, setLastFileKey] = useState<string | null>(null);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectedFrameId, setSelectedFrameId] = useState<string>("");
@@ -104,7 +124,7 @@ function HomePage() {
   // State persistence helpers
   const saveStateToStorage = useCallback((state: Partial<{
     fileName: string | null;
-    rawRoots: NodeInput[] | null;
+    originalRawRoots: NodeInput[] | null;
     selectedIds: string[];
     selectedFrameId: string;
     images: Record<string, string>;
@@ -138,6 +158,33 @@ function HomePage() {
       console.warn('Failed to load state:', e);
       return null;
     }
+  }, []);
+
+  // --- Persist rawRoots (frames) to localStorage ---
+  useEffect(() => {
+    if (rawRoots) {
+      try {
+        localStorage.setItem('mint-frames', JSON.stringify(rawRoots));
+      } catch (e) {
+        console.warn('Failed to save frames to localStorage:', e);
+      }
+    }
+  }, [rawRoots]);
+
+  // --- Load persisted frames on mount ---
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('mint-frames');
+      if (stored && !rawRoots) {
+        const frames = JSON.parse(stored);
+        if (Array.isArray(frames)) {
+          setRawRoots(frames);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load frames from localStorage:', e);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // --- History for undo/redo (track rawRoots + viewport) ---
@@ -260,37 +307,55 @@ function HomePage() {
   useEffect(() => {
     const checkRoute = () => {
       const hash = window.location.hash;
+      console.log('Hash changed:', hash);
       
       if (hash === '#projects') {
+        console.log('Setting showProjects = true');
         setShowProjects(true);
         setShowConverter(false);
-      } else if (hash.startsWith('#project=')) {
+        return;
+      } 
+      
+      if (hash.startsWith('#project=')) {
         // Coming from projects page with a specific project
         const projectId = hash.replace('#project=', '');
+        console.log('Loading project:', projectId);
         loadProjectById(projectId);
         setShowProjects(false);
         setShowConverter(false);
-      } else {
-        setShowProjects(false);
+        return;
       }
+      
+      // If no hash or other hash, don't force any view
+      // Let other effects handle showing converter, etc.
     };
 
+    // Initial check on mount
     checkRoute();
+    
+    // Also listen for hash changes
     window.addEventListener('hashchange', checkRoute);
     return () => window.removeEventListener('hashchange', checkRoute);
-  }, []);
+  }, []);  // Empty dependency array - only run on mount
 
   // Load project from storage when opening from projects page
   function loadProjectById(projectId: string) {
+    console.log('loadProjectById called with:', projectId);
     try {
+      // First try sessionStorage (for current session)
       const stored = sessionStorage.getItem('currentProject');
       if (stored) {
         const project = JSON.parse(stored);
         if (project.id === projectId) {
+          console.log('Loaded project from sessionStorage');
           setFileName(project.name);
           setRawRoots(project.rawRoots);
+          setOriginalRawRoots(project.rawRoots);
           setLastFileKey(project.fileKey);
-          setFitPending(true);
+          // Restore viewport if saved
+          if (typeof project.scale === 'number') setScale(project.scale);
+          if (project.offset) setOffset(project.offset);
+          else setFitPending(true);
           return;
         }
       }
@@ -298,23 +363,80 @@ function HomePage() {
       console.warn('Failed to load from sessionStorage:', e);
     }
     
+    // Try localStorage as backup (persists across refreshes)
+    try {
+      const stored = localStorage.getItem(`project-${projectId}`);
+      if (stored) {
+        const project = JSON.parse(stored);
+        console.log('Loaded project from localStorage');
+        setFileName(project.name);
+        setRawRoots(project.rawRoots);
+        setOriginalRawRoots(project.rawRoots);
+        setLastFileKey(project.fileKey);
+        // Restore viewport if saved
+        if (typeof project.scale === 'number') setScale(project.scale);
+        if (project.offset) setOffset(project.offset);
+        else setFitPending(true);
+        return;
+      }
+    } catch (e) {
+      console.warn('Failed to load from localStorage:', e);
+    }
+    
     // Fallback to window object
     const project = (window as any).__currentProject;
     if (project && project.id === projectId) {
+      console.log('Loaded project from window object');
       setFileName(project.name);
       setRawRoots(project.rawRoots);
+      setOriginalRawRoots(project.rawRoots);
       setLastFileKey(project.fileKey);
-      setFitPending(true);
+      if (typeof project.scale === 'number') setScale(project.scale);
+      if (project.offset) setOffset(project.offset);
+      else setFitPending(true);
+      return;
     }
+
+    // If not found in storage, fetch from API
+    console.log('Fetching project from API:', projectId);
+    fetch(`/api/projects/${projectId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.project) {
+          const project = data.project;
+          console.log('Loaded project from API');
+          setFileName(project.name);
+          setRawRoots(project.rawRoots || []);
+          setOriginalRawRoots(project.rawRoots || []);
+          setLastFileKey(project.fileKey);
+          setFitPending(true);
+          // Store in sessionStorage and localStorage for next reload
+          sessionStorage.setItem('currentProject', JSON.stringify(project));
+          localStorage.setItem(`project-${projectId}`, JSON.stringify(project));
+          (window as any).__currentProject = project;
+        }
+      })
+      .catch(err => console.error('Failed to fetch project from API:', err));
   }
+
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const justLoggedIn = params.get('logged_in');
+    
+    // Check if user is already authenticated
     fetchUser().then((userData) => {
       if (justLoggedIn && userData) {
         // Redirect to projects page after login
         window.location.href = '/#projects';
+      }
+      
+      // If not logged in after checking, show home
+      if (!userData) {
+        console.log('User not authenticated, keeping home view');
+        // Don't show converter or projects - user must log in
+      } else {
+        console.log('User authenticated:', userData);
       }
     });
   }, []);
@@ -325,56 +447,113 @@ function HomePage() {
     }
   }, [user, rawRoots, showConverter, showProjects]);
 
-  // Restore state on mount
+  // Restore state on mount (but skip if we're loading a specific project)
   useEffect(() => {
+    const hash = window.location.hash;
+    const isLoadingProject = hash.startsWith('#project=');
+    
+    // Always try to restore canvas view state (scale, offset, selections, etc.)
+    // This applies both to fresh projects and when viewing existing projects
     const savedState = loadStateFromStorage();
     if (savedState) {
-      if (savedState.fileName) setFileName(savedState.fileName);
-      if (savedState.rawRoots) setRawRoots(savedState.rawRoots);
+      // Always restore view state (zoom, pan, selections)
       if (savedState.selectedIds && Array.isArray(savedState.selectedIds)) {
         setSelectedIds(new Set(savedState.selectedIds));
       }
       if (savedState.selectedFrameId) setSelectedFrameId(savedState.selectedFrameId);
-      if (savedState.images) {
-        // Only restore string URLs, not HTMLImageElement instances
-        const stringImages: Record<string, string> = {};
-        Object.entries(savedState.images).forEach(([key, value]) => {
-          if (typeof value === 'string') stringImages[key] = value;
-        });
-        setImages(stringImages);
-      }
       if (typeof savedState.scale === 'number') setScale(savedState.scale);
       if (savedState.offset && typeof savedState.offset.x === 'number' && typeof savedState.offset.y === 'number') {
         setOffset(savedState.offset);
       }
-      // NEW: restore interactions
+      
+      // Restore interactions
       if (Array.isArray(savedState.interactions)) setInteractions(savedState.interactions);
+    }
+    
+    // Only restore full document state if NOT loading a specific project
+    // (project data comes from the project itself, not localStorage)
+    if (!isLoadingProject) {
+      console.log('Restoring full document state from localStorage');
+      if (savedState) {
+        if (savedState.fileName) setFileName(savedState.fileName);
+        if (savedState.originalRawRoots) {
+          setRawRoots(savedState.originalRawRoots);
+          setOriginalRawRoots(savedState.originalRawRoots);
+        }
+        if (savedState.images) {
+          // Only restore string URLs, not HTMLImageElement instances
+          const stringImages: Record<string, string> = {};
+          Object.entries(savedState.images).forEach(([key, value]) => {
+            if (typeof value === 'string') stringImages[key] = value;
+          });
+          setImages(stringImages);
+        }
+      }
     }
   }, [loadStateFromStorage]);
 
   // Save state on changes
   useEffect(() => {
-    if (rawRoots || fileName || Object.keys(images).length > 0 || interactions.length > 0) {
-      // Convert images to serializable format (only strings)
+    const hash = window.location.hash;
+    const isViewingProject = hash.startsWith('#project=');
+    const projectId = isViewingProject ? hash.replace('#project=', '') : null;
+    
+    // Always save canvas view state (zoom, pan, selections)
+    // But only save full document state if NOT viewing a specific project
+    // (because project state is managed separately)
+    if (isViewingProject && projectId && fileName && rawRoots) {
+      // For projects: save both view state AND the updated project data
       const serializableImages: Record<string, string> = {};
       Object.entries(images).forEach(([key, value]) => {
         if (typeof value === 'string') serializableImages[key] = value;
       });
       
+      // Save view state
       saveStateToStorage({
-        fileName,
-        rawRoots,
         selectedIds: Array.from(selectedIds),
         selectedFrameId,
         images: serializableImages,
         scale,
         offset,
-        // NEW: persist interactions
         interactions,
       });
+      
+      // Also save project data for persistence across refreshes
+      try {
+        const projectData = {
+          id: projectId,
+          name: fileName,
+          rawRoots: rawRoots,
+          fileKey: lastFileKey,
+          scale, // Save scale with project
+          offset, // Save offset with project
+        };
+        localStorage.setItem(`project-${projectId}`, JSON.stringify(projectData));
+        sessionStorage.setItem('currentProject', JSON.stringify(projectData));
+      } catch (e) {
+        console.warn('Failed to save project data:', e);
+      }
+    } else if (!isViewingProject) {
+      // Save full state for non-project work
+      if (rawRoots || fileName || Object.keys(images).length > 0 || interactions.length > 0) {
+        const serializableImages: Record<string, string> = {};
+        Object.entries(images).forEach(([key, value]) => {
+          if (typeof value === 'string') serializableImages[key] = value;
+        });
+        
+        saveStateToStorage({
+          fileName,
+          originalRawRoots,
+          selectedIds: Array.from(selectedIds),
+          selectedFrameId,
+          images: serializableImages,
+          scale,
+          offset,
+          interactions,
+        });
+      }
     }
-  }, [rawRoots, fileName, selectedIds, selectedFrameId, images, scale, offset, saveStateToStorage, interactions]);
-
+  }, [rawRoots, fileName, selectedIds, selectedFrameId, images, scale, offset, saveStateToStorage, interactions, lastFileKey]);
   async function onFetch(fileUrlOrKey: string) {
     setError(null);
     const key = fileUrlOrKey.trim();
@@ -384,15 +563,20 @@ function HomePage() {
     }
     setLoading(true);
     try {
+      console.log('Fetching Figma file:', key);
       const res = await fetch(`/api/figma/frames?fileUrl=${encodeURIComponent(key)}`);
+      console.log('Response status:', res.status, res.statusText);
+      
       if (!res.ok) {
         let errorMessage = "Failed to load frames";
         try {
           const errorData = await res.json();
+          console.error('Error data:', errorData);
           errorMessage = errorData?.error || errorData?.err || errorMessage;
         } catch {
           try {
             const errorText = await res.text();
+            console.error('Error text:', errorText);
             errorMessage = errorText || errorMessage;
           } catch {
             errorMessage = res.statusText || errorMessage;
@@ -404,7 +588,15 @@ function HomePage() {
         setLastFileKey(null);
         return;
       }
+      
       const data = await res.json();
+      console.log('Figma data received:', {
+        hasExtracted: 'extracted' in data,
+        hasFrames: 'frames' in data,
+        hasDocument: 'document' in data,
+        extractedCount: Array.isArray(data.extracted) ? data.extracted.length : 0,
+      });
+      
       let roots: NodeInput[] | null = null;
       let fName: string | null = null;
       let fileKey: string | null = null;
@@ -424,18 +616,22 @@ function HomePage() {
         fileKey = (data as any).fileKey ?? null;
       }
 
+      console.log('Extracted roots:', { count: roots?.length || 0, fileName: fName });
+
       if (!roots || roots.length === 0) {
         setError("No nodes found. Check that your API returns frames, document.children, or extracted nodes.");
         setRawRoots(null);
         setLastFileKey(null);
       } else {
         setRawRoots(roots);
+        setOriginalRawRoots(roots);
         setSelectedIds(new Set());
         setFitPending(true);
         setLastFileKey(fileKey ?? key);
       }
       setFileName(fName);
     } catch (e: any) {
+      console.error('Error fetching Figma file:', e);
       setError(String(e?.message ?? e));
       setLastFileKey(null);
     } finally {
@@ -481,7 +677,15 @@ function HomePage() {
     setImages((prev) => {
       const next = { ...prev };
       if (!url) delete next[key];
-      else next[key] = url;
+      else {
+        // Store the image with BOTH the nodeId key AND the URL as key
+        // This ensures we can find it by either reference
+        next[key] = url;
+        // Also store by URL so it can be found when rendering
+        if (typeof url === 'string' && url.length > 0) {
+          next[url] = url;
+        }
+      }
       return next;
     });
   }
@@ -504,8 +708,7 @@ function HomePage() {
     setSelectedFrameId("");
   }
 
-  // Track the last loaded file key for use in commitLive
-  const [lastFileKey, setLastFileKey] = useState<string | null>(null);
+  // Track the last loaded file key for use in commitLive (defined earlier in the file)
 
   // NEW: success modal state for commitLive
   const [commitSuccess, setCommitSuccess] = useState(false);
@@ -737,19 +940,11 @@ function HomePage() {
   }, [offset, scale, setRawRoots, setSelectedIds, setSelectedFrameId]);
 
   // NEW: rename selected frame
-  const handleRenameFrame = useCallback(() => {
-    if (!rawRoots || selectedIds.size !== 1) return;
-    const id = Array.from(selectedIds)[0];
-    const node = findNodeById(rawRoots, id) as any;
-    if (!node || node.type !== "FRAME") {
-      alert("Select a frame to rename.");
-      return;
-    }
-    const next = window.prompt("Rename frame", String(node.name || "")) || "";
-    const name = next.trim();
-    if (!name) return;
-    setRawRoots((prev) => (prev ? updateNodeByIdSafe(prev, id, (n) => ((n as any).name = name)) : prev));
-  }, [rawRoots, selectedIds]);
+  const handleRenameFrame = useCallback((newName: string) => {
+    if (!selectedFrame) return;
+    const id = selectedFrame.id;
+    setRawRoots((prev) => (prev ? updateNodeByIdSafe(prev, id, (n) => ((n as any).name = newName)) : prev));
+  }, [selectedFrame]);
 
   async function commitLive() {
     try {
@@ -794,7 +989,7 @@ function HomePage() {
 
           syntheticRoot.children = topLevel.map((t) => rebuildSubtree(t, insideSet, ref));
           computedRoots = [syntheticRoot];
-        }
+        } // end inner else
       } else {
         computedRoots = sourceNodes;
       }
@@ -987,8 +1182,8 @@ function HomePage() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [handleUndo, handleRedo, deleteSelected, groupSelected, ungroupSelected]);
 
-  // Show projects page if routed there
-  if (showProjects) {
+  // Show projects page on client if routed there
+  if (mounted && showProjects) {
     return <ProjectsPage />;
   }
 
@@ -999,7 +1194,6 @@ function HomePage() {
 
   return (
     <div className={styles.root}>
-      {loading && !rawRoots && !user && <Spinner />}
       
       {/* Toolbar - Top bar with dark theme */}
       <div className={styles.toolbarBar}>
@@ -1077,44 +1271,12 @@ function HomePage() {
       </div>
 
       {/* NEW: quick actions (create frame / rename frame / add connection) */}
-      <div
-        style={{
-          position: "fixed",
-          left: 12,
-          bottom: 12,
-          display: "flex",
-          gap: 8,
-          zIndex: 1200,
-          alignItems: "center",
-        }}
-      >
-        <button
-          onClick={handleCreateFrame}
-          title="Create a new frame"
-          style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #000000ff", background: "#000000ff", color: "#fff", cursor: "pointer" }}
-        >
-          New Frame
-        </button>
-        {selectedNode && (selectedNode as any).type === "FRAME" && (
-          <button
-            onClick={handleRenameFrame}
-            title="Rename selected frame"
-            style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #000000ff", background: "#000000ff", color: "#fff", cursor: "pointer" }}
-          >
-            Rename
-          </button>
-        )}
-        {/* Add Connection button visible when a single selection exists */}
-        {selectedIds.size === 1 && (
-          <button
-            onClick={handleOpenAddConnection}
-            title="Connect selected to another element or frame"
-            style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #000000ff", background: "#000000ff", color: "#fff", cursor: "pointer" }}
-          >
-            Add Connection
-          </button>
-        )}
-      </div>
+      <FrameDock
+        selectedFrame={selectedFrame}
+        onNewFrame={handleCreateFrame}
+        onRenameFrame={handleRenameFrame}
+        onAddConnection={handleOpenAddConnection}
+      />
 
       {/* NEW: simple list of interactions for selected source */}
       {selectedIds.size === 1 && interactions.some((it) => it.sourceId === Array.from(selectedIds)[0]) && (
@@ -1157,147 +1319,479 @@ function HomePage() {
         </div>
       )}
 
-      {/* NEW: Add Connection Modal */}
-      {connectOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setConnectOpen(false)}
+      {/* Connection Modal */}
+{/* Connection Modal */}
+{connectOpen && (
+  <div
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="connection-modal-title"
+    onClick={() => setConnectOpen(false)}
+    style={{
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0, 0, 0, 0.7)",
+      backdropFilter: "blur(4px)",
+      display: "flex",
+      alignItems: "flex-start",
+      justifyContent: "center",
+      zIndex: 2500,
+      padding: "20px 16px",
+      animation: "fadeIn 0.2s ease-out",
+      overflowY: "auto",
+    }}
+  >
+    <div
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        width: "min(480px, 96vw)",
+        background: "linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)",
+        borderRadius: "16px",
+        padding: "24px",
+        boxShadow: "0 24px 80px rgba(0, 0, 0, 0.5)",
+        border: "1px solid rgba(255, 255, 255, 0.1)",
+        display: "flex",
+        flexDirection: "column",
+        gap: "16px",
+        animation: "slideUp 0.3s ease-out",
+        margin: "20px auto",
+        maxHeight: "85vh",
+        overflowY: "auto",
+      }}
+    >
+      {/* Header */}
+      <div style={{ marginBottom: "4px" }}>
+        <h2
+          id="connection-modal-title"
           style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.35)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 2500,
+            fontWeight: 700,
+            fontSize: "20px",
+            color: "#ffffff",
+            margin: 0,
+            letterSpacing: "-0.01em",
           }}
         >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: "min(560px, 90vw)",
-              background: "#fff",
-              borderRadius: 10,
-              padding: 16,
-              boxShadow: "0 12px 32px rgba(0,0,0,0.25)",
-              display: "flex",
-              flexDirection: "column",
-              gap: 12,
-            }}
-          >
-            <div style={{ fontWeight: 700, fontSize: 16 }}>Create Connection</div>
-            <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 8, alignItems: "center" }}>
-              <label style={{ fontSize: 13, color: "#444" }}>From</label>
-              <div style={{ fontSize: 13 }}>
-                {connectSourceId ? nodeLabelById(connectSourceId) : "(none)"}
-              </div>
+          Create Connection
+        </h2>
+        <p style={{
+          fontSize: "14px",
+          color: "#9ca3af",
+          margin: "4px 0 0 0",
+          lineHeight: 1.4,
+        }}>
+          Define how nodes interact with each other
+        </p>
+      </div>
 
-              <label style={{ fontSize: 13, color: "#444" }}>To</label>
-              <select
-                value={connectTargetId}
-                onChange={(e) => setConnectTargetId(e.target.value)}
-                style={{ padding: 6, borderRadius: 6, border: "1px solid #ddd" }}
-              >
-                <option value="">Select target…</option>
-                {targetOptions
-                  .filter((n) => n?.id && n.id !== connectSourceId)
-                  .map((n) => (
-                    <option key={n.id} value={n.id}>
-                      {(n.name || n.type || "Node") + ` (${n.type})`}
-                    </option>
-                  ))}
-              </select>
-
-              <label style={{ fontSize: 13, color: "#444" }}>Type</label>
-              <select
-                value={connectType}
-                onChange={(e) => setConnectType(e.target.value as Interaction["type"])}
-                style={{ padding: 6, borderRadius: 6, border: "1px solid #ddd" }}
-              >
-                <option value="navigation">Navigation</option>
-                <option value="animation">Animation</option>
-              </select>
-
-              <label style={{ fontSize: 13, color: "#444" }}>Trigger</label>
-              <select
-                value={connectTrigger}
-                onChange={(e) => setConnectTrigger(e.target.value as Interaction["trigger"])}
-                style={{ padding: 6, borderRadius: 6, border: "1px solid #ddd" }}
-              >
-                <option value="onClick">On Click</option>
-                <option value="onTap">On Tap</option>
-              </select>
-
-              {/* Animation options (shown when type=animation) */}
-              {connectType === "animation" && (
-                <>
-                  <label style={{ fontSize: 13, color: "#444" }}>Animation</label>
-                  <select
-                    value={connectAnimationName}
-                    onChange={(e) => setConnectAnimationName(e.target.value as any)}
-                    style={{ padding: 6, borderRadius: 6, border: "1px solid #ddd" }}
-                  >
-                    <option value="none">None</option>
-                    <option value="fade">Fade</option>
-                    <option value="slide">Slide</option>
-                    <option value="zoom">Zoom</option>
-                  </select>
-
-                  <label style={{ fontSize: 13, color: "#444" }}>Duration (ms)</label>
-                  <input
-                    type="number"
-                    value={connectAnimationDuration}
-                    onChange={(e) => setConnectAnimationDuration(parseInt(e.target.value || "300", 10))}
-                    min={0}
-                    step={50}
-                    style={{ padding: 6, borderRadius: 6, border: "1px solid #ddd" }}
-                  />
-
-                  <label style={{ fontSize: 13, color: "#444" }}>Easing</label>
-                  <select
-                    value={connectAnimationEasing}
-                    onChange={(e) => setConnectAnimationEasing(e.target.value as any)}
-                    style={{ padding: 6, borderRadius: 6, border: "1px solid #ddd" }}
-                  >
-                    <option value="linear">Linear</option>
-                    <option value="ease-in">Ease-in</option>
-                    <option value="ease-out">Ease-out</option>
-                    <option value="ease-in-out">Ease-in-out</option>
-                  </select>
-
-                  <label style={{ fontSize: 13, color: "#444" }}>Direction</label>
-                  <select
-                    value={connectAnimationDirection}
-                    onChange={(e) => setConnectAnimationDirection(e.target.value as any)}
-                    style={{ padding: 6, borderRadius: 6, border: "1px solid #ddd" }}
-                  >
-                    <option value="right">Right</option>
-                    <option value="left">Left</option>
-                    <option value="up">Up</option>
-                    <option value="down">Down</option>
-                  </select>
-                </>
-              )}
-            </div>
-
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
-              <button
-                onClick={() => setConnectOpen(false)}
-                style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #ddd", background: "#fff", cursor: "pointer" }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmAddConnection}
-                style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #000000ff", background: "#000000ff", color: "#fff", cursor: "pointer" }}
-              >
-                Add
-              </button>
-            </div>
-          </div>
+      {/* Form Grid */}
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "90px 1fr",
+        gap: "12px",
+        alignItems: "center",
+      }}>
+        {/* Source */}
+        <label style={{
+          fontSize: "14px",
+          color: "#d1d5db",
+          fontWeight: 500,
+          textAlign: "right",
+        }}>
+          From
+        </label>
+        <div style={{
+          fontSize: "14px",
+          color: "#f3f4f6",
+          padding: "12px 14px",
+          background: "rgba(255, 255, 255, 0.05)",
+          borderRadius: "8px",
+          border: "1px solid rgba(255, 255, 255, 0.1)",
+          minHeight: "44px",
+          display: "flex",
+          alignItems: "center",
+          fontWeight: 500,
+        }}>
+          {connectSourceId ? (
+            <span style={{ color: "#60a5fa" }}>{nodeLabelById(connectSourceId)}</span>
+          ) : (
+            <span style={{ color: "#6b7280", fontStyle: "italic" }}>(none selected)</span>
+          )}
         </div>
-      )}
+
+        {/* Target */}
+        <label style={{
+          fontSize: "14px",
+          color: "#d1d5db",
+          fontWeight: 500,
+          textAlign: "right",
+        }}>
+          To
+        </label>
+        <select
+          value={connectTargetId}
+          onChange={(e) => setConnectTargetId(e.target.value)}
+          style={{
+            padding: "12px 14px",
+            borderRadius: "8px",
+            border: "1px solid rgba(255, 255, 255, 0.2)",
+            background: "rgba(255, 255, 255, 0.05)",
+            color: "#f3f4f6",
+            fontSize: "14px",
+            outline: "none",
+            transition: "all 0.2s ease",
+            cursor: "pointer",
+            width: "100%",
+            maxHeight: "200px",
+            overflowY: "auto",
+            appearance: "none",
+            WebkitAppearance: "none",
+            MozAppearance: "none",
+            backgroundImage: "url('data:image/svg+xml;utf8,<svg fill=\"white\" height=\"24\" viewBox=\"0 0 24 24\" width=\"24\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M7 10l5 5 5-5z\"/></svg>')",
+            backgroundRepeat: "no-repeat",
+            backgroundPosition: "right 12px center",
+            backgroundSize: "16px",
+            paddingRight: "32px",
+          }}
+          onFocus={(e) => e.target.style.borderColor = "#3b82f6"}
+          onBlur={(e) => e.target.style.borderColor = "rgba(255, 255, 255, 0.2)"}
+        >
+          <option value="" style={{ color: "#6b7280", background: "#1a1a1a" }}>
+            Select target node…
+          </option>
+          {targetOptions
+            .filter((n) => n?.id && n.id !== connectSourceId)
+            .map((n) => (
+              <option
+                key={n.id}
+                value={n.id}
+                style={{ color: "#f3f4f6", background: "#1a1a1a" }}
+              >
+                {`${n.name || n.type || "Node"} (${n.type})`}
+              </option>
+            ))}
+        </select>
+
+        {/* Connection Type */}
+        <label style={{
+          fontSize: "14px",
+          color: "#d1d5db",
+          fontWeight: 500,
+          textAlign: "right",
+        }}>
+          Type
+        </label>
+        <select
+          value={connectType}
+          onChange={(e) => setConnectType(e.target.value as Interaction["type"])}
+          style={{
+            padding: "12px 14px",
+            borderRadius: "8px",
+            border: "1px solid rgba(255, 255, 255, 0.2)",
+            background: "rgba(255, 255, 255, 0.05)",
+            color: "#f3f4f6",
+            fontSize: "14px",
+            outline: "none",
+            transition: "all 0.2s ease",
+            cursor: "pointer",
+            width: "100%",
+            maxHeight: "200px",
+            overflowY: "auto",
+            appearance: "none",
+            WebkitAppearance: "none",
+            MozAppearance: "none",
+            backgroundImage: "url('data:image/svg+xml;utf8,<svg fill=\"white\" height=\"24\" viewBox=\"0 0 24 24\" width=\"24\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M7 10l5 5 5-5z\"/></svg>')",
+            backgroundRepeat: "no-repeat",
+            backgroundPosition: "right 12px center",
+            backgroundSize: "16px",
+            paddingRight: "32px",
+          }}
+          onFocus={(e) => e.target.style.borderColor = "#3b82f6"}
+          onBlur={(e) => e.target.style.borderColor = "rgba(255, 255, 255, 0.2)"}
+        >
+          <option value="navigation" style={{ color: "#f3f4f6", background: "#1a1a1a" }}>
+            Navigation
+          </option>
+          <option value="animation" style={{ color: "#f3f4f6", background: "#1a1a1a" }}>
+            Animation
+          </option>
+        </select>
+
+        {/* Trigger */}
+        <label style={{
+          fontSize: "14px",
+          color: "#d1d5db",
+          fontWeight: 500,
+          textAlign: "right",
+        }}>
+          Trigger
+        </label>
+        <select
+          value={connectTrigger}
+          onChange={(e) => setConnectTrigger(e.target.value as Interaction["trigger"])}
+          style={{
+            padding: "12px 14px",
+            borderRadius: "8px",
+            border: "1px solid rgba(255, 255, 255, 0.2)",
+            background: "rgba(255, 255, 255, 0.05)",
+            color: "#f3f4f6",
+            fontSize: "14px",
+            outline: "none",
+            transition: "all 0.2s ease",
+            cursor: "pointer",
+            width: "100%",
+            maxHeight: "200px",
+            overflowY: "auto",
+            appearance: "none",
+            WebkitAppearance: "none",
+            MozAppearance: "none",
+            backgroundImage: "url('data:image/svg+xml;utf8,<svg fill=\"white\" height=\"24\" viewBox=\"0 0 24 24\" width=\"24\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M7 10l5 5 5-5z\"/></svg>')",
+            backgroundRepeat: "no-repeat",
+            backgroundPosition: "right 12px center",
+            backgroundSize: "16px",
+            paddingRight: "32px",
+          }}
+          onFocus={(e) => e.target.style.borderColor = "#3b82f6"}
+          onBlur={(e) => e.target.style.borderColor = "rgba(255, 255, 255, 0.2)"}
+        >
+          <option value="onClick" style={{ color: "#f3f4f6", background: "#1a1a1a" }}>
+            On Click
+          </option>
+          <option value="onTap" style={{ color: "#f3f4f6", background: "#1a1a1a" }}>
+            On Tap
+          </option>
+        </select>
+
+        {/* Animation Options */}
+        {connectType === "animation" && (
+          <>
+            <div style={{
+              gridColumn: "1 / -1",
+              height: "1px",
+              background: "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.1) 50%, transparent 100%)",
+              margin: "8px 0",
+            }} />
+            <label style={{
+              fontSize: "14px",
+              color: "#d1d5db",
+              fontWeight: 500,
+              textAlign: "right",
+            }}>
+              Animation
+            </label>
+            <select
+              value={connectAnimationName}
+              onChange={(e) => setConnectAnimationName(e.target.value as any)}
+              style={{
+                padding: "12px 14px",
+                borderRadius: "8px",
+                border: "1px solid rgba(255, 255, 255, 0.2)",
+                background: "rgba(255, 255, 255, 0.05)",
+                color: "#f3f4f6",
+                fontSize: "14px",
+                outline: "none",
+                transition: "all 0.2s ease",
+                cursor: "pointer",
+                width: "100%",
+                maxHeight: "200px",
+                overflowY: "auto",
+                appearance: "none",
+                WebkitAppearance: "none",
+                MozAppearance: "none",
+                backgroundImage: "url('data:image/svg+xml;utf8,<svg fill=\"white\" height=\"24\" viewBox=\"0 0 24 24\" width=\"24\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M7 10l5 5 5-5z\"/></svg>')",
+                backgroundRepeat: "no-repeat",
+                backgroundPosition: "right 12px center",
+                backgroundSize: "16px",
+                paddingRight: "32px",
+              }}
+              onFocus={(e) => e.target.style.borderColor = "#3b82f6"}
+              onBlur={(e) => e.target.style.borderColor = "rgba(255, 255, 255, 0.2)"}
+            >
+              <option value="none" style={{ color: "#f3f4f6", background: "#1a1a1a" }}>None</option>
+              <option value="fade" style={{ color: "#f3f4f6", background: "#1a1a1a" }}>Fade</option>
+              <option value="slide" style={{ color: "#f3f4f6", background: "#1a1a1a" }}>Slide</option>
+              <option value="zoom" style={{ color: "#f3f4f6", background: "#1a1a1a" }}>Zoom</option>
+            </select>
+            <label style={{
+              fontSize: "14px",
+              color: "#d1d5db",
+              fontWeight: 500,
+              textAlign: "right",
+            }}>
+              Duration
+            </label>
+            <input
+              type="number"
+              value={connectAnimationDuration}
+              onChange={(e) => setConnectAnimationDuration(parseInt(e.target.value || "300", 10))}
+              min={0}
+              step={50}
+              style={{
+                padding: "12px 14px",
+                borderRadius: "8px",
+                border: "1px solid rgba(255, 255, 255, 0.2)",
+                background: "rgba(255, 255, 255, 0.05)",
+                color: "#f3f4f6",
+                fontSize: "14px",
+                outline: "none",
+                transition: "all 0.2s ease",
+                width: "100%",
+              }}
+              onFocus={(e) => e.target.style.borderColor = "#3b82f6"}
+              onBlur={(e) => e.target.style.borderColor = "rgba(255, 255, 255, 0.2)"}
+              placeholder="300"
+            />
+            <label style={{
+              fontSize: "14px",
+              color: "#d1d5db",
+              fontWeight: 500,
+              textAlign: "right",
+            }}>
+              Easing
+            </label>
+            <select
+              value={connectAnimationEasing}
+              onChange={(e) => setConnectAnimationEasing(e.target.value as any)}
+              style={{
+                padding: "12px 14px",
+                borderRadius: "8px",
+                border: "1px solid rgba(255, 255, 255, 0.2)",
+                background: "rgba(255, 255, 255, 0.05)",
+                color: "#f3f4f6",
+                fontSize: "14px",
+                outline: "none",
+                transition: "all 0.2s ease",
+                cursor: "pointer",
+                width: "100%",
+                maxHeight: "200px",
+                overflowY: "auto",
+                appearance: "none",
+                WebkitAppearance: "none",
+                MozAppearance: "none",
+                backgroundImage: "url('data:image/svg+xml;utf8,<svg fill=\"white\" height=\"24\" viewBox=\"0 0 24 24\" width=\"24\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M7 10l5 5 5-5z\"/></svg>')",
+                backgroundRepeat: "no-repeat",
+                backgroundPosition: "right 12px center",
+                backgroundSize: "16px",
+                paddingRight: "32px",
+              }}
+              onFocus={(e) => e.target.style.borderColor = "#3b82f6"}
+              onBlur={(e) => e.target.style.borderColor = "rgba(255, 255, 255, 0.2)"}
+            >
+              <option value="linear" style={{ color: "#f3f4f6", background: "#1a1a1a" }}>Linear</option>
+              <option value="ease-in" style={{ color: "#f3f4f6", background: "#1a1a1a" }}>Ease-in</option>
+              <option value="ease-out" style={{ color: "#f3f4f6", background: "#1a1a1a" }}>Ease-out</option>
+              <option value="ease-in-out" style={{ color: "#f3f4f6", background: "#1a1a1a" }}>Ease-in-out</option>
+            </select>
+            <label style={{
+              fontSize: "14px",
+              color: "#d1d5db",
+              fontWeight: 500,
+              textAlign: "right",
+            }}>
+              Direction
+            </label>
+            <select
+              value={connectAnimationDirection}
+              onChange={(e) => setConnectAnimationDirection(e.target.value as any)}
+              style={{
+                padding: "12px 14px",
+                borderRadius: "8px",
+                border: "1px solid rgba(255, 255, 255, 0.2)",
+                background: "rgba(255, 255, 255, 0.05)",
+                color: "#f3f4f6",
+                fontSize: "14px",
+                outline: "none",
+                transition: "all 0.2s ease",
+                cursor: "pointer",
+                width: "100%",
+                maxHeight: "200px",
+                overflowY: "auto",
+                appearance: "none",
+                WebkitAppearance: "none",
+                MozAppearance: "none",
+                backgroundImage: "url('data:image/svg+xml;utf8,<svg fill=\"white\" height=\"24\" viewBox=\"0 0 24 24\" width=\"24\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M7 10l5 5 5-5z\"/></svg>')",
+                backgroundRepeat: "no-repeat",
+                backgroundPosition: "right 12px center",
+                backgroundSize: "16px",
+                paddingRight: "32px",
+              }}
+              onFocus={(e) => e.target.style.borderColor = "#3b82f6"}
+              onBlur={(e) => e.target.style.borderColor = "rgba(255, 255, 255, 0.2)"}
+            >
+              <option value="right" style={{ color: "#f3f4f6", background: "#1a1a1a" }}>Right</option>
+              <option value="left" style={{ color: "#f3f4f6", background: "#1a1a1a" }}>Left</option>
+              <option value="up" style={{ color: "#f3f4f6", background: "#1a1a1a" }}>Up</option>
+              <option value="down" style={{ color: "#f3f4f6", background: "#1a1a1a" }}>Down</option>
+            </select>
+          </>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div style={{
+        display: "flex",
+        justifyContent: "flex-end",
+        gap: "12px",
+        marginTop: "8px",
+        paddingTop: "16px",
+        borderTop: "1px solid rgba(255, 255, 255, 0.1)",
+      }}>
+        <button
+          onClick={() => setConnectOpen(false)}
+          style={{
+            padding: "10px 20px",
+            borderRadius: "8px",
+            border: "1px solid rgba(255, 255, 255, 0.2)",
+            background: "transparent",
+            color: "#9ca3af",
+            cursor: "pointer",
+            fontSize: "14px",
+            fontWeight: 500,
+            transition: "all 0.2s ease",
+          }}
+          onMouseEnter={(e) => {
+            const target = e.target as HTMLButtonElement;
+            target.style.background = "rgba(255, 255, 255, 0.05)";
+            target.style.color = "#d1d5db";
+          }}
+          onMouseLeave={(e) => {
+            const target = e.target as HTMLButtonElement;
+            target.style.background = "transparent";
+            target.style.color = "#9ca3af";
+          }}
+        >
+          Cancel
+        </button>
+        <button
+          onClick={confirmAddConnection}
+          style={{
+            padding: "10px 20px",
+            borderRadius: "8px",
+            border: "none",
+            background: "linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)",
+            color: "#ffffff",
+            cursor: "pointer",
+            fontSize: "14px",
+            fontWeight: 600,
+            transition: "all 0.2s ease",
+            boxShadow: "0 2px 10px rgba(59, 130, 246, 0.3)",
+          }}
+          onMouseEnter={(e) => {
+            const target = e.target as HTMLButtonElement;
+            target.style.transform = "translateY(-1px)";
+            target.style.boxShadow = "0 4px 15px rgba(59, 130, 246, 0.4)";
+          }}
+          onMouseLeave={(e) => {
+            const target = e.target as HTMLButtonElement;
+            target.style.transform = "translateY(0)";
+            target.style.boxShadow = "0 2px 10px rgba(59, 130, 246, 0.3)";
+          }}
+        >
+          Add Connection
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
       {/* Convert Modal */}
       <ConvertModal 

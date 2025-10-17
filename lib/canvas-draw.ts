@@ -48,6 +48,27 @@ export function drawGrid(
     ctx.lineTo(width, sy);
   }
   ctx.stroke();
+
+  // Center lines in light purple
+  ctx.strokeStyle = "rgba(147, 51, 234, 0.3)"; // light purple
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  
+  // Vertical center line (x = 0)
+  if (worldMinX <= 0 && worldMaxX >= 0) {
+    const sx = offset.x + 0 * scale;
+    ctx.moveTo(sx, 0);
+    ctx.lineTo(sx, height);
+  }
+  
+  // Horizontal center line (y = 0)
+  if (worldMinY <= 0 && worldMaxY >= 0) {
+    const sy = offset.y + 0 * scale;
+    ctx.moveTo(0, sy);
+    ctx.lineTo(width, sy);
+  }
+  
+  ctx.stroke();
 }
 
 // Nodes
@@ -59,7 +80,8 @@ export function drawNodes(
   selectedIds: Set<string>,
   transientOffsets: Map<string, { dx: number; dy: number }>,
   rawRoots: NodeInput[] | null,
-  hoveredId?: string | null
+  hoveredId?: string | null,
+  images?: Record<string, HTMLImageElement | string>
 ) {
   // Helper to find the raw node by id
   function findRaw(id: string) {
@@ -245,10 +267,30 @@ export function drawNodes(
     ctx.shadowBlur = 0;
     ctx.setLineDash([]);
 
+    // --- Image rendering ---
+    if (images && (rawNode as any)?.fill?.imageRef && typeof (rawNode as any).fill.imageRef === 'string' && (rawNode as any).fill.imageRef.length > 0) {
+      const imageKey = (rawNode as any).fill.imageRef;
+      const imageData = images[imageKey];
+      
+      if (imageData instanceof HTMLImageElement && imageData.complete) {
+        try {
+          // Save context state for clipping
+          ctx.save();
+          
+          // Draw the image to fill the node bounds
+          ctx.drawImage(imageData, x, y, w, h);
+          
+          ctx.restore();
+        } catch (e) {
+          console.warn('Failed to draw image:', e);
+        }
+      }
+    }
+
     // --- Selection and Hover outlines ---
     if (selectedIds.has(n.id)) {
-      ctx.lineWidth = 2; // Much thicker for better visibility
-      ctx.strokeStyle = "#1e40af"; // darker blue for better visibility
+      ctx.lineWidth = 1.5; // Thinner border for cleaner look
+      ctx.strokeStyle = "#60a5fa"; // light blue for selection
       ctx.setLineDash([]); // solid outline
       ctx.strokeRect(x, y, w, h);
     } else if (hoveredId) {

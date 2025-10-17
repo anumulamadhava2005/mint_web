@@ -11,6 +11,42 @@
   --muted: #f3f4f6; /* gray-100 */
 }
 
+/* Smooth scrolling */
+.modal-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+
+.modal-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+select option {
+  background: #1a1a1a;
+  color: #f3f4f6;
+  padding: 8px 12px;
+  border: none;
+  outline: none;
+}
+
+select option:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+
+.modal-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.modal-scroll::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+}
+
+/* Native select styling for better control */
+select {
+  max-height: 40px !important;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
   try {
     const tokens = await exchangeCodeForToken(code);
 
-    const res = NextResponse.redirect(new URL("/", process.env.NEXT_PUBLIC_APP_URL!));
+  const res = NextResponse.redirect(new URL("/#projects", process.env.NEXT_PUBLIC_APP_URL!));
     res.cookies.delete("oauth_state");
     res.cookies.set("figma_access", tokens.access_token, {
       httpOnly: true,
