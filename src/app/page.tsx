@@ -12,8 +12,12 @@ import { useDrawable } from "../../hooks/useDrawable";
 import { NodeInput, ReferenceFrame } from "../../lib/figma-types";
 import Sidebar from "../../components/Sidebar";
 import { Home } from "../../components/home";
-import { ProjectsPage } from "../../components/ProjectsPage";
-import Spinner from "../../components/Spinner";
+import dynamic from 'next/dynamic';
+// Prevent SSR for ProjectsPage to avoid hydration mismatch
+const ProjectsPage = dynamic(
+  () => import('../../components/ProjectsPage'),
+  { ssr: false, loading: () => null }
+);
 import styles from "./page.module.css";
 
 // NEW: interaction type for element/frame connections
@@ -75,12 +79,23 @@ function HomePage() {
   
   const [showConverter, setShowConverter] = useState(false);
   const [showProjects, setShowProjects] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  // On client mount, mark mounted and show projects if URL hash is #projects
+  useEffect(() => {
+    setMounted(true);
+    if (window.location.hash === '#projects') {
+      setShowProjects(true);
+    }
+  }, []);
+
   const [user, setUser] = useState<any>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [rawRoots, setRawRoots] = useState<NodeInput[] | null>(null);
   const [originalRawRoots, setOriginalRawRoots] = useState<NodeInput[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [lastFileKey, setLastFileKey] = useState<string | null>(null);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectedFrameId, setSelectedFrameId] = useState<string>("");
@@ -261,38 +276,55 @@ function HomePage() {
   useEffect(() => {
     const checkRoute = () => {
       const hash = window.location.hash;
+      console.log('Hash changed:', hash);
       
       if (hash === '#projects') {
+        console.log('Setting showProjects = true');
         setShowProjects(true);
         setShowConverter(false);
-      } else if (hash.startsWith('#project=')) {
+        return;
+      } 
+      
+      if (hash.startsWith('#project=')) {
         // Coming from projects page with a specific project
         const projectId = hash.replace('#project=', '');
+        console.log('Loading project:', projectId);
         loadProjectById(projectId);
         setShowProjects(false);
         setShowConverter(false);
-      } else {
-        setShowProjects(false);
+        return;
       }
+      
+      // If no hash or other hash, don't force any view
+      // Let other effects handle showing converter, etc.
     };
 
+    // Initial check on mount
     checkRoute();
+    
+    // Also listen for hash changes
     window.addEventListener('hashchange', checkRoute);
     return () => window.removeEventListener('hashchange', checkRoute);
-  }, []);
+  }, []);  // Empty dependency array - only run on mount
 
   // Load project from storage when opening from projects page
   function loadProjectById(projectId: string) {
+    console.log('loadProjectById called with:', projectId);
     try {
+      // First try sessionStorage (for current session)
       const stored = sessionStorage.getItem('currentProject');
       if (stored) {
         const project = JSON.parse(stored);
         if (project.id === projectId) {
+          console.log('Loaded project from sessionStorage');
           setFileName(project.name);
           setRawRoots(project.rawRoots);
           setOriginalRawRoots(project.rawRoots);
           setLastFileKey(project.fileKey);
-          setFitPending(true);
+          // Restore viewport if saved
+          if (typeof project.scale === 'number') setScale(project.scale);
+          if (project.offset) setOffset(project.offset);
+          else setFitPending(true);
           return;
         }
       }
@@ -300,24 +332,80 @@ function HomePage() {
       console.warn('Failed to load from sessionStorage:', e);
     }
     
+    // Try localStorage as backup (persists across refreshes)
+    try {
+      const stored = localStorage.getItem(`project-${projectId}`);
+      if (stored) {
+        const project = JSON.parse(stored);
+        console.log('Loaded project from localStorage');
+        setFileName(project.name);
+        setRawRoots(project.rawRoots);
+        setOriginalRawRoots(project.rawRoots);
+        setLastFileKey(project.fileKey);
+        // Restore viewport if saved
+        if (typeof project.scale === 'number') setScale(project.scale);
+        if (project.offset) setOffset(project.offset);
+        else setFitPending(true);
+        return;
+      }
+    } catch (e) {
+      console.warn('Failed to load from localStorage:', e);
+    }
+    
     // Fallback to window object
     const project = (window as any).__currentProject;
     if (project && project.id === projectId) {
+      console.log('Loaded project from window object');
       setFileName(project.name);
       setRawRoots(project.rawRoots);
       setOriginalRawRoots(project.rawRoots);
       setLastFileKey(project.fileKey);
-      setFitPending(true);
+      if (typeof project.scale === 'number') setScale(project.scale);
+      if (project.offset) setOffset(project.offset);
+      else setFitPending(true);
+      return;
     }
+
+    // If not found in storage, fetch from API
+    console.log('Fetching project from API:', projectId);
+    fetch(`/api/projects/${projectId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.project) {
+          const project = data.project;
+          console.log('Loaded project from API');
+          setFileName(project.name);
+          setRawRoots(project.rawRoots || []);
+          setOriginalRawRoots(project.rawRoots || []);
+          setLastFileKey(project.fileKey);
+          setFitPending(true);
+          // Store in sessionStorage and localStorage for next reload
+          sessionStorage.setItem('currentProject', JSON.stringify(project));
+          localStorage.setItem(`project-${projectId}`, JSON.stringify(project));
+          (window as any).__currentProject = project;
+        }
+      })
+      .catch(err => console.error('Failed to fetch project from API:', err));
   }
+
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const justLoggedIn = params.get('logged_in');
+    
+    // Check if user is already authenticated
     fetchUser().then((userData) => {
       if (justLoggedIn && userData) {
         // Redirect to projects page after login
         window.location.href = '/#projects';
+      }
+      
+      // If not logged in after checking, show home
+      if (!userData) {
+        console.log('User not authenticated, keeping home view');
+        // Don't show converter or projects - user must log in
+      } else {
+        console.log('User authenticated:', userData);
       }
     });
   }, []);
@@ -328,59 +416,113 @@ function HomePage() {
     }
   }, [user, rawRoots, showConverter, showProjects]);
 
-  // Restore state on mount
+  // Restore state on mount (but skip if we're loading a specific project)
   useEffect(() => {
+    const hash = window.location.hash;
+    const isLoadingProject = hash.startsWith('#project=');
+    
+    // Always try to restore canvas view state (scale, offset, selections, etc.)
+    // This applies both to fresh projects and when viewing existing projects
     const savedState = loadStateFromStorage();
     if (savedState) {
-      if (savedState.fileName) setFileName(savedState.fileName);
-      if (savedState.originalRawRoots) {
-        setRawRoots(savedState.originalRawRoots);
-        setOriginalRawRoots(savedState.originalRawRoots);
-      }
+      // Always restore view state (zoom, pan, selections)
       if (savedState.selectedIds && Array.isArray(savedState.selectedIds)) {
         setSelectedIds(new Set(savedState.selectedIds));
       }
       if (savedState.selectedFrameId) setSelectedFrameId(savedState.selectedFrameId);
-      if (savedState.images) {
-        // Only restore string URLs, not HTMLImageElement instances
-        const stringImages: Record<string, string> = {};
-        Object.entries(savedState.images).forEach(([key, value]) => {
-          if (typeof value === 'string') stringImages[key] = value;
-        });
-        setImages(stringImages);
-      }
       if (typeof savedState.scale === 'number') setScale(savedState.scale);
       if (savedState.offset && typeof savedState.offset.x === 'number' && typeof savedState.offset.y === 'number') {
         setOffset(savedState.offset);
       }
-      // NEW: restore interactions
+      
+      // Restore interactions
       if (Array.isArray(savedState.interactions)) setInteractions(savedState.interactions);
+    }
+    
+    // Only restore full document state if NOT loading a specific project
+    // (project data comes from the project itself, not localStorage)
+    if (!isLoadingProject) {
+      console.log('Restoring full document state from localStorage');
+      if (savedState) {
+        if (savedState.fileName) setFileName(savedState.fileName);
+        if (savedState.originalRawRoots) {
+          setRawRoots(savedState.originalRawRoots);
+          setOriginalRawRoots(savedState.originalRawRoots);
+        }
+        if (savedState.images) {
+          // Only restore string URLs, not HTMLImageElement instances
+          const stringImages: Record<string, string> = {};
+          Object.entries(savedState.images).forEach(([key, value]) => {
+            if (typeof value === 'string') stringImages[key] = value;
+          });
+          setImages(stringImages);
+        }
+      }
     }
   }, [loadStateFromStorage]);
 
   // Save state on changes
   useEffect(() => {
-    if (rawRoots || fileName || Object.keys(images).length > 0 || interactions.length > 0) {
-      // Convert images to serializable format (only strings)
+    const hash = window.location.hash;
+    const isViewingProject = hash.startsWith('#project=');
+    const projectId = isViewingProject ? hash.replace('#project=', '') : null;
+    
+    // Always save canvas view state (zoom, pan, selections)
+    // But only save full document state if NOT viewing a specific project
+    // (because project state is managed separately)
+    if (isViewingProject && projectId && fileName && rawRoots) {
+      // For projects: save both view state AND the updated project data
       const serializableImages: Record<string, string> = {};
       Object.entries(images).forEach(([key, value]) => {
         if (typeof value === 'string') serializableImages[key] = value;
       });
       
+      // Save view state
       saveStateToStorage({
-        fileName,
-        originalRawRoots,
         selectedIds: Array.from(selectedIds),
         selectedFrameId,
         images: serializableImages,
         scale,
         offset,
-        // NEW: persist interactions
         interactions,
       });
+      
+      // Also save project data for persistence across refreshes
+      try {
+        const projectData = {
+          id: projectId,
+          name: fileName,
+          rawRoots: rawRoots,
+          fileKey: lastFileKey,
+          scale, // Save scale with project
+          offset, // Save offset with project
+        };
+        localStorage.setItem(`project-${projectId}`, JSON.stringify(projectData));
+        sessionStorage.setItem('currentProject', JSON.stringify(projectData));
+      } catch (e) {
+        console.warn('Failed to save project data:', e);
+      }
+    } else if (!isViewingProject) {
+      // Save full state for non-project work
+      if (rawRoots || fileName || Object.keys(images).length > 0 || interactions.length > 0) {
+        const serializableImages: Record<string, string> = {};
+        Object.entries(images).forEach(([key, value]) => {
+          if (typeof value === 'string') serializableImages[key] = value;
+        });
+        
+        saveStateToStorage({
+          fileName,
+          originalRawRoots,
+          selectedIds: Array.from(selectedIds),
+          selectedFrameId,
+          images: serializableImages,
+          scale,
+          offset,
+          interactions,
+        });
+      }
     }
-  }, [rawRoots, fileName, selectedIds, selectedFrameId, images, scale, offset, saveStateToStorage, interactions]);
-
+  }, [rawRoots, fileName, selectedIds, selectedFrameId, images, scale, offset, saveStateToStorage, interactions, lastFileKey]);
   async function onFetch(fileUrlOrKey: string) {
     setError(null);
     const key = fileUrlOrKey.trim();
@@ -390,15 +532,20 @@ function HomePage() {
     }
     setLoading(true);
     try {
+      console.log('Fetching Figma file:', key);
       const res = await fetch(`/api/figma/frames?fileUrl=${encodeURIComponent(key)}`);
+      console.log('Response status:', res.status, res.statusText);
+      
       if (!res.ok) {
         let errorMessage = "Failed to load frames";
         try {
           const errorData = await res.json();
+          console.error('Error data:', errorData);
           errorMessage = errorData?.error || errorData?.err || errorMessage;
         } catch {
           try {
             const errorText = await res.text();
+            console.error('Error text:', errorText);
             errorMessage = errorText || errorMessage;
           } catch {
             errorMessage = res.statusText || errorMessage;
@@ -410,7 +557,15 @@ function HomePage() {
         setLastFileKey(null);
         return;
       }
+      
       const data = await res.json();
+      console.log('Figma data received:', {
+        hasExtracted: 'extracted' in data,
+        hasFrames: 'frames' in data,
+        hasDocument: 'document' in data,
+        extractedCount: Array.isArray(data.extracted) ? data.extracted.length : 0,
+      });
+      
       let roots: NodeInput[] | null = null;
       let fName: string | null = null;
       let fileKey: string | null = null;
@@ -430,6 +585,8 @@ function HomePage() {
         fileKey = (data as any).fileKey ?? null;
       }
 
+      console.log('Extracted roots:', { count: roots?.length || 0, fileName: fName });
+
       if (!roots || roots.length === 0) {
         setError("No nodes found. Check that your API returns frames, document.children, or extracted nodes.");
         setRawRoots(null);
@@ -443,6 +600,7 @@ function HomePage() {
       }
       setFileName(fName);
     } catch (e: any) {
+      console.error('Error fetching Figma file:', e);
       setError(String(e?.message ?? e));
       setLastFileKey(null);
     } finally {
@@ -511,8 +669,7 @@ function HomePage() {
     setSelectedFrameId("");
   }
 
-  // Track the last loaded file key for use in commitLive
-  const [lastFileKey, setLastFileKey] = useState<string | null>(null);
+  // Track the last loaded file key for use in commitLive (defined earlier in the file)
 
   // NEW: success modal state for commitLive
   const [commitSuccess, setCommitSuccess] = useState(false);
@@ -801,7 +958,7 @@ function HomePage() {
 
           syntheticRoot.children = topLevel.map((t) => rebuildSubtree(t, insideSet, ref));
           computedRoots = [syntheticRoot];
-        }
+        } // end inner else
       } else {
         computedRoots = sourceNodes;
       }
@@ -994,8 +1151,8 @@ function HomePage() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [handleUndo, handleRedo, deleteSelected, groupSelected, ungroupSelected]);
 
-  // Show projects page if routed there
-  if (showProjects) {
+  // Show projects page on client if routed there
+  if (mounted && showProjects) {
     return <ProjectsPage />;
   }
 
@@ -1006,7 +1163,6 @@ function HomePage() {
 
   return (
     <div className={styles.root}>
-      {loading && !rawRoots && !user && <Spinner />}
       
       {/* Toolbar - Top bar with dark theme */}
       <div className={styles.toolbarBar}>
