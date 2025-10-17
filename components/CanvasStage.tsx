@@ -35,19 +35,26 @@ const updateNodePositions = (nodes: NodeInput[], moved: Map<string, { dx: number
     }
 
     if (offsets) {
-      hasChanged = true
+      hasChanged = true;
+      const newX = ((node as any).x ?? 0) + offsets.dx;
+      const newY = ((node as any).y ?? 0) + offsets.dy;
       
-      // Update x, y properties on the node itself for persistence
-      // Do NOT update absoluteBoundingBox - let useDrawable hook recalculate based on x,y
-      const newX = ((node as any).x ?? 0) + offsets.dx
-      const newY = ((node as any).y ?? 0) + offsets.dy
-      
-      return { 
+      const newNode = { 
         ...node, 
         x: newX,
         y: newY,
         children: newChildren 
-      } as NodeInput
+      } as NodeInput;
+
+      if (newNode.absoluteBoundingBox) {
+        newNode.absoluteBoundingBox = {
+          ...newNode.absoluteBoundingBox,
+          x: (node.absoluteBoundingBox?.x ?? newX) + offsets.dx,
+          y: (node.absoluteBoundingBox?.y ?? newY) + offsets.dy,
+        };
+      }
+      
+      return newNode;
     }
 
     if (hasChanged) {
