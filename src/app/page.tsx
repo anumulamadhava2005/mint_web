@@ -1269,7 +1269,6 @@ function HomePage() {
             offset={offset}
             setOffset={setOffset}
             selectedFrame={selectedFrame}
-            resetKey={resetKey}
             images={images}
           />
         </div>
