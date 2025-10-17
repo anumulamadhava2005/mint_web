@@ -1,39 +1,32 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
-
 import { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import styles from "./css/CanvasStage.module.css"
 import type { DrawableNode, NodeInput, ReferenceFrame } from "../lib/figma-types"
 import { drawGrid, drawNodes, drawReferenceFrameOverlay } from "../lib/ccanvas-draw-bridge"
 import AuthRedirect from "./AuthRedirect"
-
 // Type Definitions
 type ImageLike = HTMLImageElement | string
 type ImageMap = Record<string, ImageLike>
-
 // Constants
-const ALIGNMENT_THRESHOLD = 8
+const ALIGNMENT_THRESHOLD = 12 // Increased snap distance for easier alignment
 const CLICK_DRAG_SLOP = 3
 const STORAGE_VERSION = 1
 const MAX_STORAGE_AGE = 24 * 60 * 60 * 1000 // 24 hours
-
 // Helper Functions
 const rectsIntersect = (
   a: { x: number; y: number; w: number; h: number },
   b: { x: number; y: number; w: number; h: number },
 ) => !(a.x + a.w < b.x || b.x + b.w < a.x || a.y + a.h < b.y || b.y + b.h < a.y)
-
 // OPTIMIZATION: More performant way to update node positions than structuredClone
 const updateNodePositions = (nodes: NodeInput[], moved: Map<string, { dx: number, dy: number }>): NodeInput[] => {
   return nodes.map(node => {
     let hasChanged = false
     const offsets = moved.get(node.id)
-
     const newChildren = node.children ? updateNodePositions(node.children, moved) : undefined;
     if (newChildren !== node.children) { // Pointer comparison
       hasChanged = true
     }
-
     if (offsets) {
       hasChanged = true;
       const newX = ((node as any).x ?? 0) + offsets.dx;
@@ -45,7 +38,6 @@ const updateNodePositions = (nodes: NodeInput[], moved: Map<string, { dx: number
         y: newY,
         children: newChildren 
       } as NodeInput;
-
       if (newNode.absoluteBoundingBox) {
         newNode.absoluteBoundingBox = {
           ...newNode.absoluteBoundingBox,
@@ -56,15 +48,12 @@ const updateNodePositions = (nodes: NodeInput[], moved: Map<string, { dx: number
       
       return newNode;
     }
-
     if (hasChanged) {
       return { ...node, children: newChildren };
     }
-
     return node
   })
 }
-
 export default function CanvasStage(props: {
   rawRoots: NodeInput[] | null
   setRawRoots: (v: NodeInput[] | null) => void
@@ -91,11 +80,9 @@ export default function CanvasStage(props: {
     selectedFrame,
     images = {},
   } = props
-
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const overlayRef = useRef<HTMLCanvasElement>(null)
   const [viewportSize, setViewportSize] = useState({ width: 1280, height: 800 })
-
   // State management refs
   const stateRef = useRef({
     scale,
@@ -104,34 +91,35 @@ export default function CanvasStage(props: {
     isPanning: false,
     isMarquee: false,
     hoveredId: null as string | null,
-    alignmentGuides: { verticalLines: [] as any[], horizontalLines: [] as any[] },
+    alignmentGuides: { 
+      verticalLines: [] as Array<{ x: number; parentX: number; parentY: number; parentW: number; parentH: number }>, 
+      horizontalLines: [] as Array<{ y: number; parentX: number; parentY: number; parentW: number; parentH: number }> 
+    },
     drawableNodes,
     rawRoots,
   })
-
   // Control flags
   const framePendingRef = useRef(false)
   const hasLoadedFromStorage = useRef(false)
   const hasUserChanges = useRef(false)
   const isInitialized = useRef(false)
   const hasReceivedData = useRef(false)
-
-  // Update state ref when props change (syncs React state with our high-performance ref)
+  // Sync selection, drawable nodes, and rawRoots on prop changes
   useEffect(() => {
-    stateRef.current = { ...stateRef.current, scale, offset, selectedIds, drawableNodes, rawRoots }
-  }, [scale, offset, selectedIds, drawableNodes, rawRoots])
-
+    stateRef.current.selectedIds = selectedIds
+    stateRef.current.drawableNodes = drawableNodes
+    stateRef.current.rawRoots = rawRoots
+  }, [selectedIds, drawableNodes, rawRoots])
   const keysRef = useRef({ ctrl: false, meta: false, shift: false, space: false })
   type Mode = "idle" | "pan" | "marquee" | "drag" | "click"
   const modeRef = useRef<Mode>("idle")
-
   const lastPointer = useRef<{ x: number; y: number } | null>(null)
   const downScreenRef = useRef<{ x: number; y: number } | null>(null)
+  const dragStartScreen = useRef<{ x: number; y: number } | null>(null)
   const marqueeStart = useRef<{ wx: number; wy: number } | null>(null)
   const dragStartWorld = useRef<{ wx: number; wy: number } | null>(null)
   const originalPositions = useRef<Map<string, { x: number, y: number }>>(new Map())
   const dragOffsetsRef = useRef<Map<string, { dx: number, dy: number }>>(new Map())
-
   // Debug logging
   useEffect(() => {
     console.log('=== Canvas Debug Info ===');
@@ -141,7 +129,6 @@ export default function CanvasStage(props: {
     console.log('offset:', offset);
     console.log('========================');
   }, [rawRoots, drawableNodes, scale, offset]);
-
   // Track when we receive actual data from parent
   useEffect(() => {
     if (rawRoots && rawRoots.length > 0 && !hasReceivedData.current) {
@@ -149,7 +136,6 @@ export default function CanvasStage(props: {
       console.log('Data received from parent');
     }
   }, [rawRoots]);
-
   // Image Loading
   const mergedImages = useMemo(() => {
     const out: ImageMap = { ...(images || {}) }
@@ -176,7 +162,6 @@ export default function CanvasStage(props: {
     const nodeMap = new Map<string, DrawableNode & { raw: NodeInput }>()
     const childToParentMap = new Map<string, string>()
     if (!rawRoots) return { nodeMap, childToParentMap }
-
     const walk = (node: NodeInput, parentId: string | null = null) => {
       const drawable = drawableNodes.find(d => d.id === node.id)
       if (drawable) {
@@ -190,7 +175,6 @@ export default function CanvasStage(props: {
     rawRoots.forEach(root => walk(root))
     return { nodeMap, childToParentMap }
   }, [rawRoots, drawableNodes])
-
   const toWorld = useCallback((clientX: number, clientY: number) => {
     const rect = canvasRef.current?.getBoundingClientRect()
     if (!rect) return { wx: 0, wy: 0, sx: 0, sy: 0 }
@@ -202,7 +186,6 @@ export default function CanvasStage(props: {
     const wy = (sy - offset.y) / scale
     return { wx, wy, sx, sy }
   }, [])
-
   // State persistence functions
   const saveStateToStorage = useCallback(() => {
     if (!hasUserChanges.current || !isInitialized.current) return
@@ -222,7 +205,6 @@ export default function CanvasStage(props: {
       console.warn('Failed to save state:', e);
     }
   }, []);
-
   const loadStateFromStorage = useCallback(() => {
     if (hasLoadedFromStorage.current) return;
     
@@ -255,7 +237,6 @@ export default function CanvasStage(props: {
       localStorage.removeItem('canvas-stage-state');
     }
   }, [setScale, setOffset, setSelectedIds, setRawRoots, rawRoots]);
-
   const requestRedraw = useCallback(() => {
     if (framePendingRef.current) return
     framePendingRef.current = true
@@ -293,12 +274,10 @@ export default function CanvasStage(props: {
         w: viewportSize.width / scale,
         h: viewportSize.height / scale,
       };
-
       // Filter nodes to only include those intersecting the viewport.
       const visibleNodes = currentDrawableNodes.filter(node => 
         rectsIntersect(visibleWorldRect, { x: node.x, y: node.y, w: node.width, h: node.height })
       );
-
       // Draw grid only if canvas is empty
       if (visibleNodes.length === 0) {
         drawGrid(ctx, viewportSize.width, viewportSize.height, offset, scale, 100, 20)
@@ -306,7 +285,6 @@ export default function CanvasStage(props: {
       
       // Draw only the visible nodes
       drawNodes(ctx, visibleNodes, offset, scale, selectedIds, dragOffsetsRef.current, stateRef.current.rawRoots, hoveredId, loadedImages)
-
       // Marquee selection
       if (isMarquee && marqueeStart.current && lastPointer.current) {
         const s1x = offset.x + marqueeStart.current.wx * scale
@@ -323,31 +301,36 @@ export default function CanvasStage(props: {
         octx.fillRect(mx, my, mw, mh)
         octx.strokeRect(mx, my, mw, mh)
       }
-
       // Overlays
       if (selectedFrame) drawReferenceFrameOverlay(octx, selectedFrame, offset, scale)
-
       if (alignmentGuides.verticalLines.length > 0 || alignmentGuides.horizontalLines.length > 0) {
-        octx.strokeStyle = "rgba(147, 51, 234, 0.8)"
-        octx.lineWidth = 1
-        octx.setLineDash([2, 3])
-        octx.beginPath()
+        // Draw alignment guides - purple color, limited span
+        octx.strokeStyle = "rgba(147, 51, 234, 0.9)" // Purple color
+        octx.lineWidth = 1.5
+        octx.setLineDash([4, 2]) // Smaller dash pattern for clarity
+        
+        // Draw vertical alignment guides (only span to parent bounds)
         alignmentGuides.verticalLines.forEach(guide => {
           const sx = offset.x + guide.x * scale
-          octx.moveTo(sx, 0)
-          octx.lineTo(sx, viewportSize.height)
+          octx.beginPath()
+          octx.moveTo(sx, offset.y + guide.parentY * scale)
+          octx.lineTo(sx, offset.y + (guide.parentY + guide.parentH) * scale)
+          octx.stroke()
         })
+        
+        // Draw horizontal alignment guides (only span to parent bounds)
         alignmentGuides.horizontalLines.forEach(guide => {
           const sy = offset.y + guide.y * scale
-          octx.moveTo(0, sy)
-          octx.lineTo(viewportSize.width, sy)
+          octx.beginPath()
+          octx.moveTo(offset.x + guide.parentX * scale, sy)
+          octx.lineTo(offset.x + (guide.parentX + guide.parentW) * scale, sy)
+          octx.stroke()
         })
-        octx.stroke()
+        
         octx.setLineDash([])
       }
     })
   }, [viewportSize, selectedFrame])
-
   // Initialization
   useEffect(() => {
     if (!isInitialized.current && canvasRef.current) {
@@ -358,7 +341,6 @@ export default function CanvasStage(props: {
       setTimeout(requestRedraw, 100);
     }
   }, [loadStateFromStorage, requestRedraw]);
-
   // Debounced save
   useEffect(() => {
     if (!isInitialized.current) return;
@@ -367,7 +349,6 @@ export default function CanvasStage(props: {
     }, 1000);
     return () => clearTimeout(timeoutId);
   }, [scale, offset, selectedIds, rawRoots, saveStateToStorage]);
-
   // Auth event listeners
   useEffect(() => {
     const handleAuthWarning = (e: CustomEvent) => console.warn('Auth warning:', e.detail.message);
@@ -379,7 +360,6 @@ export default function CanvasStage(props: {
       window.removeEventListener('auth-confirmed', handleAuthConfirmed as EventListener);
     };
   }, []);
-
   // Canvas setup and resize handling
   useEffect(() => {
     const handleResize = () => {
@@ -397,7 +377,6 @@ export default function CanvasStage(props: {
     handleResize();
     return () => window.removeEventListener("resize", handleResize);
   }, [requestRedraw]);
-
   // Keyboard handling
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -443,33 +422,30 @@ export default function CanvasStage(props: {
       
       // Directly mutate the ref for immediate visual feedback
       const { scale: currentScale, offset: currentOffset } = stateRef.current;
-
       if (e.ctrlKey || e.metaKey) { // Zooming
         const zoomFactor = Math.exp(-e.deltaY * 0.005);
         const newScale = Math.max(0.05, Math.min(20, currentScale * zoomFactor));
         const worldX = (mouseX - currentOffset.x) / currentScale;
         const worldY = (mouseY - currentOffset.y) / currentScale;
-        stateRef.current.offset = {
+        const newOffset = {
           x: mouseX - worldX * newScale,
           y: mouseY - worldY * newScale
         };
         stateRef.current.scale = newScale;
+        stateRef.current.offset = newOffset;
+        // Immediately sync React state to avoid stale props on click
+        setScale(newScale);
+        setOffset(newOffset);
       } else { // Panning
-        stateRef.current.offset = {
+        const newOffset = {
           x: currentOffset.x - e.deltaX,
           y: currentOffset.y - e.deltaY
         };
+        stateRef.current.offset = newOffset;
+        setOffset(newOffset);
       }
-      
       requestRedraw();
       hasUserChanges.current = true;
-      
-      // After the wheel events stop, update the actual React state
-      if (wheelEndTimer.current) clearTimeout(wheelEndTimer.current);
-      wheelEndTimer.current = setTimeout(() => {
-        setScale(stateRef.current.scale);
-        setOffset(stateRef.current.offset);
-      }, 150);
     };
     
     target.addEventListener("wheel", onWheel, { passive: false });
@@ -478,33 +454,30 @@ export default function CanvasStage(props: {
       if (wheelEndTimer.current) clearTimeout(wheelEndTimer.current);
     };
   }, [setScale, setOffset, requestRedraw]);
-
   // Pointer interactions with RAF throttling
   useEffect(() => {
     const target = overlayRef.current;
     if (!target) return;
-
     let panState = { x: 0, y: 0 };
     let motionFrameId: number | null = null;
-
+    let lastScreenPos = { x: 0, y: 0 }; // Track last screen position for delta calculation
+    
     const pointInRect = (px: number, py: number, r: { x: number; y: number; w: number; h: number }) => {
       const tolerance = 3 / stateRef.current.scale;
       return px >= r.x - tolerance && px <= r.x + r.w + tolerance && py >= r.y - tolerance && py <= r.y + r.h + tolerance;
     };
-
     const onPointerDown = (e: PointerEvent) => {
       target.setPointerCapture(e.pointerId);
       const { wx, wy } = toWorld(e.clientX, e.clientY);
       lastPointer.current = { x: e.clientX, y: e.clientY };
+      lastScreenPos = { x: e.clientX, y: e.clientY }; // Initialize screen position tracker
       downScreenRef.current = { x: e.clientX, y: e.clientY };
-
       if (keysRef.current.space || e.button === 1) {
         modeRef.current = "pan";
         stateRef.current.isPanning = true;
         panState = { ...stateRef.current.offset };
         return;
       }
-
       let hitId: string | null = null;
       // Iterate backwards to hit top-most items first
       for (let i = drawableNodes.length - 1; i >= 0; i--) {
@@ -514,9 +487,12 @@ export default function CanvasStage(props: {
           break;
         }
       }
-
       if (hitId) {
         modeRef.current = "click";
+        // Store start in screen coordinates so drag math can convert using the
+        // current scale at drag time. This is robust if zoom changes between
+        // the zoom gesture and the pointer drag/click.
+        dragStartScreen.current = { x: e.clientX, y: e.clientY };
         dragStartWorld.current = { wx, wy };
         
         const isCtrl = e.ctrlKey || e.metaKey;
@@ -524,7 +500,6 @@ export default function CanvasStage(props: {
         const nextSelectedIds = currentSelection.has(hitId) && !isCtrl
             ? currentSelection
             : new Set(isCtrl ? (currentSelection.has(hitId) ? [...currentSelection].filter(id => id !== hitId) : [...currentSelection, hitId]) : [hitId]);
-
         setSelectedIds(nextSelectedIds);
         
         originalPositions.current.clear();
@@ -541,11 +516,9 @@ export default function CanvasStage(props: {
       }
       requestRedraw();
     };
-
     const onPointerMove = (e: PointerEvent) => {
       if (!lastPointer.current) return;
       if (motionFrameId) cancelAnimationFrame(motionFrameId);
-
       motionFrameId = requestAnimationFrame(() => {
         if (modeRef.current === "click") {
           const dxs = e.clientX - downScreenRef.current!.x;
@@ -556,11 +529,16 @@ export default function CanvasStage(props: {
           }
         }
         
+        // Calculate delta from last position for more reliable movement
+        const deltaX = e.clientX - lastScreenPos.x;
+        const deltaY = e.clientY - lastScreenPos.y;
+        lastScreenPos = { x: e.clientX, y: e.clientY };
         lastPointer.current = { x: e.clientX, y: e.clientY };
-
+        
         if (modeRef.current === "pan") {
-          panState.x += e.movementX;
-          panState.y += e.movementY;
+          // Use calculated delta for panning - works reliably for both mouse and trackpad
+          panState.x += deltaX;
+          panState.y += deltaY;
           stateRef.current.offset = panState;
           requestRedraw();
           return;
@@ -571,42 +549,74 @@ export default function CanvasStage(props: {
           return;
         }
         
-        if (modeRef.current === "drag" && dragStartWorld.current) {
-          const { wx, wy } = toWorld(e.clientX, e.clientY);
-          let dx = wx - dragStartWorld.current.wx;
-          let dy = wy - dragStartWorld.current.wy;
+        if (modeRef.current === "drag" && dragStartScreen.current) {
+          // Convert screen delta to world delta using current scale. This keeps
+          // drag movement consistent even if scale changes while dragging.
+          const sxDelta = e.clientX - dragStartScreen.current.x;
+          const syDelta = e.clientY - dragStartScreen.current.y;
+          const currentScale = stateRef.current.scale || 1;
+          const dx = sxDelta / currentScale;
+          const dy = syDelta / currentScale;
           
-          const guides = { verticalLines: [] as any[], horizontalLines: [] as any[] };
+          const guides = { 
+            verticalLines: [] as Array<{ x: number; parentX: number; parentY: number; parentW: number; parentH: number }>, 
+            horizontalLines: [] as Array<{ y: number; parentX: number; parentY: number; parentW: number; parentH: number }> 
+          };
           let finalDx = dx, finalDy = dy;
-
           const primaryNodeId = originalPositions.current.keys().next().value;
+          
           if (primaryNodeId) {
               const node = nodeMap.get(primaryNodeId)!;
               const originalPos = originalPositions.current.get(primaryNodeId)!;
+              
+              // Get ONLY the immediate parent, not grandparents
               const parentId = childToParentMap.get(primaryNodeId);
               const parent = parentId ? nodeMap.get(parentId) : null;
-
+              
               if (parent) {
+                  // Calculate the center of the dragged node (after movement)
                   const nodeCenterX = originalPos.x + dx + node.width / 2;
                   const nodeCenterY = originalPos.y + dy + node.height / 2;
+                  
+                  // Calculate the center of the IMMEDIATE parent node
                   const parentCenterX = parent.x + parent.width / 2;
                   const parentCenterY = parent.y + parent.height / 2;
-
-                  if (Math.abs(nodeCenterX - parentCenterX) < ALIGNMENT_THRESHOLD) {
+                  
+                  // Snap horizontally when close to immediate parent center
+                  const hDist = Math.abs(nodeCenterX - parentCenterX);
+                  if (hDist < ALIGNMENT_THRESHOLD) {
+                      // Snap to immediate parent center
                       finalDx = parentCenterX - node.width / 2 - originalPos.x;
-                      guides.verticalLines.push({ x: parentCenterX });
+                      guides.verticalLines.push({ 
+                        x: parentCenterX,
+                        parentX: parent.x,
+                        parentY: parent.y,
+                        parentW: parent.width,
+                        parentH: parent.height
+                      });
                   }
-                  if (Math.abs(nodeCenterY - parentCenterY) < ALIGNMENT_THRESHOLD) {
+                  
+                  // Snap vertically when close to immediate parent center
+                  const vDist = Math.abs(nodeCenterY - parentCenterY);
+                  if (vDist < ALIGNMENT_THRESHOLD) {
+                      // Snap to immediate parent center
                       finalDy = parentCenterY - node.height / 2 - originalPos.y;
-                      guides.horizontalLines.push({ y: parentCenterY });
+                      guides.horizontalLines.push({ 
+                        y: parentCenterY,
+                        parentX: parent.x,
+                        parentY: parent.y,
+                        parentW: parent.width,
+                        parentH: parent.height
+                      });
                   }
               }
           }
           
-          dragOffsetsRef.current.clear();
-          originalPositions.current.forEach((_pos, id) => {
-              dragOffsetsRef.current.set(id, { dx: finalDx, dy: finalDy });
-          });
+      // Apply the same offset to all selected nodes with snapped values
+      dragOffsetsRef.current.clear();
+      originalPositions.current.forEach((_pos, id) => {
+        dragOffsetsRef.current.set(id, { dx: finalDx, dy: finalDy });
+      });
           stateRef.current.alignmentGuides = guides;
           requestRedraw();
           return;
@@ -631,7 +641,6 @@ export default function CanvasStage(props: {
         motionFrameId = null;
       });
     };
-
     const onPointerUp = (e: PointerEvent) => {
       try { target.releasePointerCapture(e.pointerId); } catch(err) {/* ignore */}
       if (motionFrameId) cancelAnimationFrame(motionFrameId);
@@ -662,7 +671,6 @@ export default function CanvasStage(props: {
         );
         setSelectedIds(nextIds);
       }
-
       modeRef.current = "idle";
       dragStartWorld.current = null;
       dragOffsetsRef.current.clear();
@@ -671,7 +679,6 @@ export default function CanvasStage(props: {
       stateRef.current.alignmentGuides = { verticalLines: [], horizontalLines: [] };
       requestRedraw();
     };
-
     target.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("pointermove", onPointerMove, { passive: true });
     window.addEventListener("pointerup", onPointerUp);
@@ -683,7 +690,6 @@ export default function CanvasStage(props: {
       if (motionFrameId) cancelAnimationFrame(motionFrameId);
     };
   }, [toWorld, drawableNodes, setRawRoots, setSelectedIds, setOffset, requestRedraw, nodeMap, childToParentMap, rawRoots, selectedIds]);
-
   // Logout cleanup
   useEffect(() => {
     const handleLogout = () => {
@@ -695,7 +701,6 @@ export default function CanvasStage(props: {
     window.addEventListener('logout', handleLogout);
     return () => window.removeEventListener('logout', handleLogout);
   }, []);
-
   // Redraw when data arrives or changes
   const prevDrawableNodesLengthRef = useRef(0);
   useEffect(() => {
@@ -704,13 +709,10 @@ export default function CanvasStage(props: {
       requestRedraw();
     }
   }, [drawableNodes, requestRedraw]);
-
   // Redraw triggers for view state changes from props
   useEffect(() => {
     if (isInitialized.current) requestRedraw();
   }, [selectedIds, offset, scale, requestRedraw]);
-
-
   return (
     <>
       <AuthRedirect />
@@ -727,20 +729,16 @@ export default function CanvasStage(props: {
     </>
   )
 }
-
 // Optimized image loading hook
 function useImageMap(map: ImageMap) {
   const [state, setState] = useState<Record<string, HTMLImageElement>>({});
-
   const mapKey = useMemo(() =>
     Object.entries(map).map(([k, v]) => `${k}:${typeof v === "string" ? v : (v as HTMLImageElement)?.src ?? ""}`).join("|"),
   [map]);
-
   useEffect(() => {
     let alive = true;
     const next: Record<string, HTMLImageElement> = {};
     const promises: Promise<void>[] = [];
-
     Object.entries(map).forEach(([key, val]) => {
       if (typeof val !== "string") {
         if (val?.complete && val.naturalWidth > 0) next[key] = val;
@@ -758,7 +756,6 @@ function useImageMap(map: ImageMap) {
       });
       promises.push(promise);
     });
-
     if (promises.length > 0) {
         Promise.all(promises).then(() => {
             if (alive) setState(prev => ({ ...prev, ...next }));
@@ -766,7 +763,6 @@ function useImageMap(map: ImageMap) {
     } else if (Object.keys(next).length > 0) {
         setState(prev => ({ ...prev, ...next }));
     }
-
     return () => { alive = false; };
   }, [mapKey])
   

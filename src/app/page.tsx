@@ -672,6 +672,18 @@ function HomePage() {
     a.remove();
     URL.revokeObjectURL(url);
   }
+  // Reset canvas to original state: nodes, selection, zoom, pan
+  const [resetKey, setResetKey] = useState(0);
+  const handleResetCanvas = () => {
+    if (!originalRawRoots) return;
+    setRawRoots(originalRawRoots);
+    setSelectedIds(new Set());
+    setSelectedFrameId('');
+    // Reset zoom and pan to fit the original nodes
+    fitToScreen();
+    // Trigger CanvasStage to sync zoom/pan
+    setResetKey((k) => k + 1);
+  };
 
   function handleImageChange(key: string, url: string) {
     setImages((prev) => {
@@ -1187,9 +1199,9 @@ function HomePage() {
     return <ProjectsPage />;
   }
 
-  // Show landing page if not logged in and no data
-  if (!showConverter && !rawRoots && !user && !loading) {
-    return <Home onGetStarted={() => setShowConverter(true)} />;
+  // Show landing page if not logged in
+  if (!user && !loading) {
+    return <Home onGetStarted={() => window.location.href = '/api/auth/login'} />;
   }
 
   return (
@@ -1240,6 +1252,8 @@ function HomePage() {
           setSelectedIds={setSelectedIds}
           selectedFrameId={selectedFrameId}
           setSelectedFrameId={setSelectedFrameId}
+          lastFileKey={lastFileKey}
+          onReset={handleResetCanvas}
         />
 
         {/* Center Canvas */}
@@ -1255,6 +1269,7 @@ function HomePage() {
             offset={offset}
             setOffset={setOffset}
             selectedFrame={selectedFrame}
+            resetKey={resetKey}
             images={images}
           />
         </div>

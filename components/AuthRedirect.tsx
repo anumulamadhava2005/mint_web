@@ -10,8 +10,9 @@
 
 import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import React, { Fragment } from 'react';
 
-export default function AuthRedirect() {
+export default function AuthRedirect(): React.ReactElement {
   const router = useRouter();
   const hasCheckedRef = useRef(false);
   const authCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -24,79 +25,31 @@ export default function AuthRedirect() {
     if (typeof document !== 'undefined') {
       const checkAuthStatus = () => {
         const hasCookie = document.cookie.includes('figma_access');
-        const hasStoredSession = localStorage.getItem('canvas-stage-state');
-        const sessionTimestamp = localStorage.getItem('canvas-session-timestamp');
-        
-        // Check if stored session is recent (within last 24 hours)
-        const isRecentSession = sessionTimestamp && 
-          (Date.now() - parseInt(sessionTimestamp)) < 24 * 60 * 60 * 1000;
+        const currentPath = window.location.pathname;
 
-        console.log('Auth check:', {
-          hasCookie,
-          hasStoredSession: !!hasStoredSession,
-          isRecentSession,
-          timestamp: sessionTimestamp
-        });
-
-        if (!hasCookie) {
-          // If we have recent session data, this is likely a refresh where cookie is being reestablished
-          if (hasStoredSession && isRecentSession) {
-            console.log('Preserving session data - likely a page refresh');
-            
-            // Set a longer timeout to check again for auth restoration
-            authCheckTimeoutRef.current = setTimeout(() => {
-              const recheckCookie = document.cookie.includes('figma_access');
-              
-              if (!recheckCookie) {
-                console.warn('Cookie still not available after grace period. Session may have expired.');
-                
-                // Show warning but preserve data
-                window.dispatchEvent(new CustomEvent('auth-warning', {
-                  detail: { 
-                    message: 'Your session may have expired. Please save your work and re-authenticate if needed.',
-                    type: 'warning'
-                  }
-                }));
-              } else {
-                console.log('Cookie restored after grace period');
-                // Update session timestamp since auth was confirmed
-                localStorage.setItem('canvas-session-timestamp', Date.now().toString());
-                
-                // Dispatch confirmation event
-                window.dispatchEvent(new CustomEvent('auth-confirmed', {
-                  detail: { authenticated: true }
-                }));
-              }
-            }, 2000); // 2 second grace period for cookie restoration
-            
-            return; // Don't redirect or clear - preserve user's work
+        // If no auth cookie and not already on home page, redirect to home
+        if (!hasCookie && currentPath !== '/') {
+          console.log('No authentication found - redirecting to home');
+          
+          // Keep essential data but clear session-specific items
+          try {
+            sessionStorage.clear();
+          } catch (e) {
+            console.warn('Failed to clear session storage:', e);
           }
           
-          // Only clear if there's no stored session OR it's very old
-          if (!hasStoredSession || !isRecentSession) {
-            console.log('No valid session found - clearing storage and redirecting');
-            
-            try {
-              // Clear only auth-related data
-              localStorage.removeItem('canvas-stage-state');
-              localStorage.removeItem('canvas-session-timestamp');
-              sessionStorage.clear();
-            } catch (e) {
-              console.warn('Failed to clear storage:', e);
-            }
-            
-            router.replace('/');
-          }
-        } else {
-          // Cookie exists - update session timestamp
-          console.log('Valid authentication found');
-          localStorage.setItem('canvas-session-timestamp', Date.now().toString());
-          
-          // Dispatch event to notify that authentication is confirmed
-          window.dispatchEvent(new CustomEvent('auth-confirmed', {
-            detail: { authenticated: true }
-          }));
+          router.push('/');
+          return;
         }
+        
+        // Cookie exists - update session timestamp
+        console.log('Valid authentication found');
+        localStorage.setItem('canvas-session-timestamp', Date.now().toString());
+        
+        // Dispatch event to notify that authentication is confirmed
+        window.dispatchEvent(new CustomEvent('auth-confirmed', {
+          detail: { authenticated: true }
+        }));
       };
 
       // Small initial delay to allow Next.js hydration and cookie setting
@@ -136,5 +89,5 @@ export default function AuthRedirect() {
     };
   }, [router]);
 
-  return null;
+  return <Fragment />;
 }

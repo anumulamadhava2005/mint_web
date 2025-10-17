@@ -380,17 +380,28 @@ export default function PropertiesPanel(props: {
                 onClick={() => selectedNode && onDelete(selectedNode)}
                 title="Delete component"
                 style={{
-                  background: 'transparent',
-                  border: 'none',
+                  background: 'rgba(239, 68, 68, 0.1)',
+                  border: '1px solid rgba(239, 68, 68, 0.2)',
                   color: '#ef4444',
-                  fontSize: 16,
+                  fontSize: 14,
                   lineHeight: 1,
-                  padding: 4,
+                  padding: '8px 12px',
                   cursor: 'pointer',
-                  borderRadius: 6
+                  borderRadius: 6,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
                 }}
               >
-                🗑️
+                <span style={{ fontSize: 14 }}>🗑️</span>
+                <span>Delete</span>
               </button>
             )}
             <button

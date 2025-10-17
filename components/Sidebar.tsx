@@ -14,8 +14,10 @@ export default function Sidebar(props: {
   setSelectedIds: React.Dispatch<React.SetStateAction<Set<string>>>
   selectedFrameId: string
   setSelectedFrameId: React.Dispatch<React.SetStateAction<string>>
+  lastFileKey: string | null
+  onReset: () => void
 }) {
-  const { rawRoots, setRawRoots, selectedIds, setSelectedIds, selectedFrameId, setSelectedFrameId } = props
+  const { rawRoots, setRawRoots, selectedIds, setSelectedIds, selectedFrameId, setSelectedFrameId, lastFileKey, onReset } = props
   const [filter, setFilter] = useState("")
 
   const filteredNodes = (rawRoots ?? []).filter((node) => node.name?.toLowerCase().includes(filter.toLowerCase()))
@@ -72,6 +74,52 @@ export default function Sidebar(props: {
           selectedIds={selectedIds}
           setSelectedIds={setSelectedIds}
         />
+      </div>
+
+      {/* Reset Button */}
+      <div style={{ 
+        position: 'absolute', 
+        bottom: '20px', 
+        left: '20px',
+        zIndex: 10 ,
+        height: '40px',
+        width: '20px'
+      }}>
+        <button
+          onClick={() => {
+            // First clear selections
+            setSelectedIds(new Set());
+            setSelectedFrameId('');
+            // Then trigger refetch
+            onReset();
+          }}
+          style={{
+            background: 'linear-gradient(180deg, rgba(99, 102, 241, 0.1), rgba(99, 102, 241, 0.05))',
+            border: '1px solid rgba(99, 102, 241, 0.2)',
+            color: '#818cf8',
+            padding: '10px 16px',
+            borderRadius: '8px',
+            fontSize: '14px',
+            fontWeight: 500,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            transition: 'all 0.2s ease',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'linear-gradient(180deg, rgba(99, 102, 241, 0.15), rgba(99, 102, 241, 0.1))';
+            e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'linear-gradient(180deg, rgba(99, 102, 241, 0.1), rgba(99, 102, 241, 0.05))';
+            e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+          }}
+        >
+          <span>↺</span>
+          <span>Reset</span>
+        </button>
       </div>
 
       <style jsx>{`
