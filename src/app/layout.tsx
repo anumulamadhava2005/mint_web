@@ -1,14 +1,21 @@
 import type { Metadata } from "next";
-import { Roboto } from "next/font/google";
+import { Inter, Outfit } from "next/font/google";
 import "./globals.css";
 import styles from "./layout.module.css";
 
-
-const roboto = Roboto({
-  variable: "--font-roboto",
-  subsets: ["latin"],
-  weight: ["400", "500", "700"],
+const outfit = Outfit({
+  subsets: ['latin'],
+  variable: '--font-outfit',
+  display: 'swap',
 });
+
+const inter = Inter({
+  subsets: ['latin'],
+  variable: '--font-inter',
+  display: 'swap',
+  weight: ['400', '500', '600', '700'],
+});
+
 
 export const metadata: Metadata = {
   title: "Create Next App",
@@ -21,10 +28,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={styles.htmlFull}>
+    <html lang="en" className={`${outfit.variable} ${inter.variable} ${styles.htmlFull}`}>
       <body
-        className={`${roboto.variable} ${styles.body}`}
-        style={{ fontFamily: 'var(--font-roboto), Arial, Helvetica, sans-serif' }}
+        className={styles.body}
+        style={{ fontFamily: 'var(--font-inter), system-ui, sans-serif' }}
       >
         <div className={styles.full}>
           {children}

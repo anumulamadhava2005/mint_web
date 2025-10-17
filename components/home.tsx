@@ -4,6 +4,7 @@ import { easeInOut } from "framer-motion"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { motion, useAnimation, useInView } from "framer-motion"
 import Galaxy from "./Galaxy"
+import BlurText from "./BlurText";
 
 type Metric = {
   label: string
@@ -96,22 +97,68 @@ function Hero() {
         </svg>
       </div>
 
-      <div className="mx-auto max-w-6xl px-6 md:px-8 pt-14 md:pt-20 pb-16 md:pb-24">
+      <div className="mx-auto max-w-6xl px-6 md:px-8 pt-14 md:pt-32 pb-16 md:pb-36 min-h-[90vh] flex items-center">
         <motion.div
           variants={staggerContainer}
           initial="hidden"
           animate={controls}
           className="mx-auto max-w-3xl text-center"
         >
-          <motion.h1 variants={fadeInUp} className="text-balance text-4xl md:text-6xl font-bold tracking-tight text-white">
-            Turn Figma designs into
-            <br />
-            <span className="text-blue-400">clean, production code</span>
+          <motion.h1 
+            variants={fadeInUp} 
+            className="text-balance text-4xl md:text-6xl tracking-tight text-white"
+            style={{ fontFamily: 'var(--font-outfit)' }}
+          >
+            <BlurText
+              text="Turn Figma designs into clean,"
+              delay={100}
+              animateBy="words"
+              className="inline-block text-balance text-4xl md:text-6xl tracking-tight text-white font-medium"
+              animationFrom={{ filter: 'blur(20px)', opacity: 0, y: -30 }}
+              animationTo={[
+                { filter: 'blur(10px)', opacity: 0.7, y: -15 },
+                { filter: 'blur(5px)', opacity: 0.9, y: -5 },
+                { filter: 'blur(0px)', opacity: 1, y: 0 }
+              ]}
+              stepDuration={0.5}
+              onAnimationComplete={() => {}}
+            />
+            {' '}
+            <BlurText
+              text="production code"
+              delay={200}
+              animateBy="words"
+              className="inline-block text-balance text-4xl md:text-6xl tracking-tight font-semibold text-orange-500"
+              animationFrom={{ filter: 'blur(20px)', opacity: 0, y: -30 }}
+              animationTo={[
+                { filter: 'blur(10px)', opacity: 0.7, y: -15 },
+                { filter: 'blur(5px)', opacity: 0.9, y: -5 },
+                { filter: 'blur(0px)', opacity: 1, y: 0 }
+              ]}
+              stepDuration={0.5}
+              onAnimationComplete={() => {}}
+            />
           </motion.h1>
 
-          <motion.p variants={fadeInUp} className="mt-5 md:mt-6 text-pretty text-base md:text-lg text-gray-300">
-            A powerful converter that transforms your Figma files into developer‑ready code. Fast, accurate, and built
-            for modern workflows.
+          <motion.p 
+            variants={fadeInUp} 
+            className="mt-5 md:mt-6 text-pretty text-base md:text-lg text-gray-300"
+            style={{ fontFamily: 'var(--font-inter)' }}
+          >
+            <BlurText
+              text="A powerful converter that transforms your Figma files into developer-ready code. Fast, accurate, and built for modern workflows."
+              delay={50}
+              animateBy="words"
+              className="mt-5 md:mt-6 text-pretty text-base md:text-lg text-gray-300 leading-relaxed"
+              animationFrom={{ filter: 'blur(15px)', opacity: 0, y: -20 }}
+              animationTo={[
+                { filter: 'blur(8px)', opacity: 0.7, y: -10 },
+                { filter: 'blur(4px)', opacity: 0.9, y: -5 },
+                { filter: 'blur(0px)', opacity: 1, y: 0 }
+              ]}
+              stepDuration={0.4}
+              onAnimationComplete={() => {}}
+            />
           </motion.p>
 
           <motion.div variants={fadeInUp} className="mt-8 md:mt-10 flex items-center justify-center gap-3">
