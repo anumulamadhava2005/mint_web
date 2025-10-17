@@ -2,7 +2,7 @@
 
 import { useState, useEffect, KeyboardEvent } from 'react';
 import Dock from './dock';
-import styles from './css/frameDock.module.css';
+import styles from './css/FrameDock.module.css';
 import { Plus, Edit, Share } from 'lucide-react'; 
 
 type Frame = { id: string; name?: string };

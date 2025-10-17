@@ -441,7 +441,7 @@ export function buildNext(
 
   // Pre-fill env so the app connects back to the editor that did the conversion
   const liveOrigin = (opts?.liveOrigin || "http://localhost:3001").replace(/\/$/, "");
-  const fileKey = opts?.fileKey || "YOUR_FILE_KEY";
+  const fileKey = opts?.fileKey || "BO4SUjwC6DDP1zHCu1RcaJ";
   zip.file(".env.local", envLocal(liveOrigin, fileKey));
 
   zip.file("tsconfig.json", JSON.stringify({

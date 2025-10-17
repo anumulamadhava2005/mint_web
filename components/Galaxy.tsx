@@ -1,3 +1,4 @@
+// @ts-ignore: missing type declarations for 'ogl'
 import { Renderer, Program, Mesh, Color, Triangle } from 'ogl';
 import { useEffect, useRef, useMemo } from 'react';
 import './Galaxy.css';
