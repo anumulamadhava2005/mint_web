@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getSnapshot } from "../../store";
+import { getSnapshot } from "../store";
 import fs from "fs/promises";
 import path from "path";
 
@@ -24,17 +24,19 @@ export async function GET(req: NextRequest) {
 
   const snap = getSnapshot(fileKey);
   if (snap) {
-    const payload = {
-      refW: snap.refW,
-      refH: snap.refH,
-      roots: snap.roots,
-      manifest: snap.manifest ?? {},
+    const payload: any = {
+      refW: snap.payload?.refW ?? 0,
+      refH: snap.payload?.refH ?? 0,
+      roots: snap.payload?.roots ?? [],
+      manifest: snap.payload?.manifest ?? {},
+      interactions: Array.isArray(snap.payload?.interactions) ? snap.payload!.interactions : [],
+      focusFrameId: snap.payload?.focusFrameId ?? null,
     };
     return new Response(
       JSON.stringify({
         fileKey,
         version: snap.version,
-        timestamp: snap.timestamp,
+        timestamp: Date.now(),
         payload,
       }),
       { status: 200, headers: { ...CORS, "Content-Type": "application/json" } }
@@ -58,7 +60,7 @@ export async function GET(req: NextRequest) {
       }
 
       // If parsed JSON, normalize into the expected shape.
-      if (parsed && typeof parsed === "object") {
+  if (parsed && typeof parsed === "object") {
         // If the static file already contains the exact shape, return as-is.
         if (parsed.payload && typeof parsed.payload === "object" && parsed.payload.roots) {
           const normalized = {
@@ -70,6 +72,8 @@ export async function GET(req: NextRequest) {
               refH: parsed.payload.refH ?? null,
               roots: parsed.payload.roots ?? [],
               manifest: parsed.payload.manifest ?? {},
+              interactions: Array.isArray(parsed.payload.interactions) ? parsed.payload.interactions : [],
+              focusFrameId: parsed.payload.focusFrameId ?? null,
             },
           };
           return new Response(JSON.stringify(normalized), { status: 200, headers: { ...CORS, "Content-Type": "application/json" } });
@@ -86,6 +90,8 @@ export async function GET(req: NextRequest) {
               refH: parsed.refH ?? null,
               roots: parsed.roots ?? [],
               manifest: parsed.manifest ?? {},
+              interactions: Array.isArray(parsed.interactions) ? parsed.interactions : [],
+              focusFrameId: parsed.focusFrameId ?? parsed.payload?.focusFrameId ?? null,
             },
           };
           return new Response(JSON.stringify(normalized), { status: 200, headers: { ...CORS, "Content-Type": "application/json" } });
@@ -101,6 +107,8 @@ export async function GET(req: NextRequest) {
             refH: parsed.refH ?? null,
             roots: parsed.roots ?? (Array.isArray(parsed) ? parsed : []),
             manifest: parsed.manifest ?? {},
+            interactions: Array.isArray(parsed.interactions) ? parsed.interactions : [],
+            focusFrameId: parsed.focusFrameId ?? null,
           },
         };
         return new Response(JSON.stringify(fallback), {
@@ -118,96 +126,4 @@ export async function GET(req: NextRequest) {
   return new Response(JSON.stringify({ error: "snapshot not found" }), { status: 404, headers: CORS });
 }
 
-/**
- * GET /api/live/snapshot?fileKey=FILE_KEY
- * Returns canonical snapshot:
- * { version: number, payload: { roots: any[], manifest: Record<string,string>, refW: number, refH: number } }
- */
-export async function canonicalGET(req: Request) {
-  try {
-    const url = new URL(req.url);
-    const fileKey = url.searchParams.get("fileKey");
-    if (!fileKey) return new Response(JSON.stringify({ error: "missing fileKey" }), { status: 400 });
-
-    const safeName = encodeURIComponent(fileKey) + ".json";
-    const snapshotsDir = path.join(process.cwd(), "public", "live", "snapshots");
-    const filePath = path.join(snapshotsDir, safeName);
-
-    let rawText: string;
-    try {
-      rawText = await fs.readFile(filePath, "utf8");
-    } catch (e) {
-      return new Response(JSON.stringify({ error: "snapshot not found" }), { status: 404 });
-    }
-
-    let parsed: any;
-    try {
-      parsed = JSON.parse(rawText);
-    } catch {
-      return new Response(JSON.stringify({ error: "invalid snapshot JSON" }), { status: 500 });
-    }
-
-    // Normalize into canonical shape
-    function normalize(raw: any) {
-      if (!raw || typeof raw !== "object") return null;
-      const src = raw.payload ? raw.payload : raw;
-      if (!src || !Array.isArray(src.roots)) return null;
-
-      const manifest: Record<string, string> = {};
-      if (src.manifest && typeof src.manifest === "object") {
-        for (const k of Object.keys(src.manifest)) {
-          const v = src.manifest[k];
-          manifest[k] = typeof v === "string" ? v.replace(/^assets\//, "/assets/") : String(v ?? "");
-        }
-      }
-
-      function adaptNode(n: any): any {
-        if (!n || typeof n !== "object") return n;
-        const x = Math.round(n.x ?? 0);
-        const y = Math.round(n.y ?? 0);
-        const width = Math.round(n.width ?? n.w ?? 0);
-        const height = Math.round(n.height ?? n.h ?? 0);
-
-        let fill = n.fill ?? null;
-        if (fill && typeof fill === "object" && fill.type === "IMAGE" && fill.imageRef) {
-          const srcUrl = manifest[fill.imageRef] || null;
-          fill = { ...fill, src: srcUrl };
-        }
-
-        const text = n.text ?? (String(n.type || "").toUpperCase() === "TEXT" ? { characters: n.characters ?? n.textRaw ?? "" } : null);
-        const children = Array.isArray(n.children) ? n.children.map((c: any) => adaptNode(c)) : [];
-
-        const out: any = {
-          ...n,
-          x,
-          y,
-          width,
-          height,
-          fill,
-          text,
-          children,
-        };
-        delete out.w;
-        delete out.h;
-        delete out.ax;
-        delete out.ay;
-        return out;
-      }
-
-      const adaptedRoots = src.roots.map(adaptNode);
-      const refW = Number(src.refW ?? src.width ?? 0) || 0;
-      const refH = Number(src.refH ?? src.height ?? 0) || 0;
-      return { version: raw.version ?? 1, payload: { roots: adaptedRoots, manifest, refW, refH } };
-    }
-
-    const normalized = normalize(parsed);
-    if (!normalized) return new Response(JSON.stringify({ error: "snapshot has unexpected shape" }), { status: 500 });
-
-    return new Response(JSON.stringify(normalized), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
-  } catch (err: any) {
-    return new Response(JSON.stringify({ error: String(err?.message ?? err) }), { status: 500 });
-  }
-}
+// Note: Removed non-standard export canonicalGET; Next.js App Router only supports HTTP method exports like GET/POST.

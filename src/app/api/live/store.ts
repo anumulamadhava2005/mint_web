@@ -5,6 +5,8 @@ export type SnapshotPayload = {
   manifest: Record<string, string>; // imageRef -> signed URL
   refW: number;
   refH: number;
+  interactions?: any[];            // optional interaction definitions (sourceId, targetId, type, trigger, etc.)
+  focusFrameId?: string | null;
 };
 
 export type Snapshot = {

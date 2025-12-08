@@ -14,6 +14,12 @@ import {
   FileCode,
   Search,
   X,
+  MousePointer,
+  LayoutGrid,
+  Square,
+  PenTool,
+  Type,
+  Circle,
 } from "lucide-react";
 
 import { Link } from "lucide-react";
@@ -69,6 +75,8 @@ interface ToolbarProps {
   canRedo: boolean;
   onCommit: () => void;
   onNavigateProjects: () => void;
+  currentTool?: "select" | "grid" | "rect" | "pen" | "text" | "ellipse";
+  onToolChange?: (tool: "select" | "grid" | "rect" | "pen" | "text" | "ellipse") => void;
 }
 
 export default function ModernToolbar(props: ToolbarProps) {
@@ -84,10 +92,13 @@ export default function ModernToolbar(props: ToolbarProps) {
   const hideTimeoutRef = useRef<number | null>(null);
   const hoverTimeoutRef = useRef<number | null>(null);
 
-  // Effect to fetch user on mount, runs only once.
+  // Effect to fetch user on mount, runs only once regardless of prop ref changes.
+  const hasFetchedUserRef = useRef(false);
   useEffect(() => {
+    if (hasFetchedUserRef.current) return;
+    hasFetchedUserRef.current = true;
     props.onMountFetchUser?.();
-  }, [props.onMountFetchUser]);
+  }, []);
 
   // Effect to handle auto-hide and show on hover
   useEffect(() => {
@@ -200,6 +211,30 @@ export default function ModernToolbar(props: ToolbarProps) {
   
   // Base classes for consistent icon button styling
   const iconButtonClasses = "flex items-center justify-center h-8 w-8 rounded-lg hover:bg-white/20 text-black hover:text-black transition-all duration-200 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed";
+  const toolBtnBase = "relative flex items-center justify-center h-8 w-8 rounded-md text-white/90 hover:bg-white/10 transition-colors";
+  const ToolBtn = ({
+    active,
+    onClick,
+    children,
+    showChevron,
+    label,
+  }: { active?: boolean; onClick?: () => void; children: React.ReactNode; showChevron?: boolean; label?: string }) => (
+    <button
+      onClick={onClick}
+      className={toolBtnBase}
+      aria-label={label}
+      title={label}
+      style={{
+        background: active ? "#2563eb" : "transparent",
+        color: active ? "#fff" : undefined,
+      }}
+    >
+      {children}
+      {showChevron && (
+        <ChevronDown className="w-3 h-3 absolute -bottom-2 text-white/70" />
+      )}
+    </button>
+  );
 
   return (
     <>
@@ -221,8 +256,61 @@ export default function ModernToolbar(props: ToolbarProps) {
             backdropFilter: "blur(40px)",
           }}
         >
-          {/* Left Section: Logo & View Controls */}
+          {/* Left Section: Tools, Logo & View Controls */}
           <div className="flex items-center gap-3">
+            {/* Tools palette */}
+            <div
+              className="hidden sm:flex items-center gap-2 px-2 py-1 rounded-xl"
+              style={{ background: "#111827", border: "1px solid rgba(255,255,255,0.1)" }}
+            >
+              <ToolBtn
+                label="Select"
+                active={(props.currentTool ?? "select") === "select"}
+                onClick={() => props.onToolChange?.("select")}
+                showChevron
+              >
+                <MousePointer className="w-4 h-4" />
+              </ToolBtn>
+              <div className="text-white/30">+</div>
+              <ToolBtn
+                label="Grid/Guides"
+                active={(props.currentTool ?? "select") === "grid"}
+                onClick={() => props.onToolChange?.("grid")}
+                showChevron
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </ToolBtn>
+              <ToolBtn
+                label="Rectangle"
+                active={props.currentTool === "rect"}
+                onClick={() => props.onToolChange?.("rect")}
+                showChevron
+              >
+                <Square className="w-4 h-4" />
+              </ToolBtn>
+              <ToolBtn
+                label="Pen"
+                active={props.currentTool === "pen"}
+                onClick={() => props.onToolChange?.("pen")}
+              >
+                <PenTool className="w-4 h-4" />
+              </ToolBtn>
+              <ToolBtn
+                label="Text"
+                active={props.currentTool === "text"}
+                onClick={() => props.onToolChange?.("text")}
+              >
+                <Type className="w-4 h-4" />
+              </ToolBtn>
+              <ToolBtn
+                label="Ellipse"
+                active={props.currentTool === "ellipse"}
+                onClick={() => props.onToolChange?.("ellipse")}
+              >
+                <Circle className="w-4 h-4" />
+              </ToolBtn>
+            </div>
+
             <div className="flex items-center gap-2 cursor-pointer" onClick={props.onNavigateProjects}>
               <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-md">
                 <Zap className="w-4 h-4 text-white" />

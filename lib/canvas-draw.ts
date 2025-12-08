@@ -161,8 +161,9 @@ export function drawNodes(
     const rawNode = findRaw(n.id);
     const isTextNode = (n.type || "").toUpperCase() === "TEXT";
 
-    // --- Fill/Background ---
-    if (!isTextNode) {
+  const isEllipse = (n.type || '').toUpperCase() === 'ELLIPSE';
+  // --- Fill/Background ---
+  if (!isTextNode) {
       if (rawNode?.fill) {
         if (rawNode.fill.type === "SOLID" && rawNode.fill.color) {
           ctx.fillStyle = rawNode.fill.color;
@@ -230,7 +231,12 @@ export function drawNodes(
         rawNode?.corners?.bottomLeft ??
         0;
 
-      if (radius && radius > 0) {
+      if (isEllipse) {
+        ctx.beginPath();
+        ctx.ellipse(x + w / 2, y + h / 2, Math.max(0.5, w / 2), Math.max(0.5, h / 2), 0, 0, Math.PI * 2);
+        ctx.fill();
+        if (rawNode?.stroke) ctx.stroke();
+      } else if (radius && radius > 0) {
         ctx.beginPath();
         if ((ctx as any).roundRect) {
           (ctx as any).roundRect(x, y, w, h, radius * scale);

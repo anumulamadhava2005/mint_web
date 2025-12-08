@@ -23,37 +23,39 @@ export default function AuthRedirect(): React.ReactElement {
     hasCheckedRef.current = true;
 
     if (typeof document !== 'undefined') {
-      const checkAuthStatus = () => {
-        const hasCookie = document.cookie.includes('figma_access');
+      const checkAuthStatus = async () => {
+        const hasCookie = document.cookie.includes('figma_access') || document.cookie.includes('figma_refresh');
         const currentPath = window.location.pathname;
 
         // If no auth cookie and not already on home page, redirect to home
         if (!hasCookie && currentPath !== '/') {
           console.log('No authentication found - redirecting to home');
-          
-          // Keep essential data but clear session-specific items
-          try {
-            sessionStorage.clear();
-          } catch (e) {
-            console.warn('Failed to clear session storage:', e);
-          }
-          
           router.push('/');
           return;
         }
         
-        // Cookie exists - update session timestamp
-        console.log('Valid authentication found');
-        localStorage.setItem('canvas-session-timestamp', Date.now().toString());
-        
-        // Dispatch event to notify that authentication is confirmed
-        window.dispatchEvent(new CustomEvent('auth-confirmed', {
-          detail: { authenticated: true }
-        }));
+        if (hasCookie) {
+          try {
+            // Only make one auth check on initial load
+            const response = await fetch('/api/figma/me');
+            if (response.ok) {
+              console.log('Valid authentication confirmed');
+              localStorage.setItem('canvas-session-timestamp', Date.now().toString());
+              window.dispatchEvent(new CustomEvent('auth-confirmed', {
+                detail: { authenticated: true }
+              }));
+            } else if (response.status === 401) {
+              console.log('Auth invalid - redirecting to home');
+              router.push('/');
+            }
+          } catch (e) {
+            console.warn('Auth check failed:', e);
+          }
+        }
       };
 
       // Small initial delay to allow Next.js hydration and cookie setting
-      setTimeout(checkAuthStatus, 100);
+      authCheckTimeoutRef.current = setTimeout(checkAuthStatus, 100);
     }
 
     // Cleanup timeout on unmount

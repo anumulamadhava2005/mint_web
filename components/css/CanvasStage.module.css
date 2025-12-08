@@ -14,3 +14,9 @@
   inset: 0;
 }
 
+/* Ensure overlay canvas receives pointer events and shows cursor */
+.canvasOverlay {
+  pointer-events: auto;
+  cursor: inherit;
+}
+

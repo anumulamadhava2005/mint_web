@@ -106,6 +106,8 @@ function HomePage() {
   const [images, setImages] = useState<Record<string, string | HTMLImageElement>>({});
   // NEW: interactions state
   const [interactions, setInteractions] = useState<Interaction[]>([]);
+  // NEW: selected interaction for editing
+  const [selectedInteractionId, setSelectedInteractionId] = useState<string | null>(null);
   // NEW: UI state for adding a connection
   const [connectOpen, setConnectOpen] = useState(false);
   const [connectSourceId, setConnectSourceId] = useState<string | null>(null);
@@ -120,6 +122,14 @@ function HomePage() {
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [convertOpen, setConvertOpen] = useState(false);
+  // NEW: tool palette state
+  const [currentTool, setCurrentTool] = useState<"select" | "grid" | "rect" | "pen" | "text" | "ellipse">("select");
+  // Autosave helpers
+  const autoSaveTimerRef = useRef<number | null>(null);
+  const autoSaveInFlightRef = useRef<Promise<any> | null>(null);
+  const lastAutoSaveAtRef = useRef<number>(0);
+  const [saving, setSaving] = useState<"idle" | "saving" | "saved">("idle");
+  const savingTimeoutRef = useRef<number | null>(null);
 
   // State persistence helpers
   const saveStateToStorage = useCallback((state: Partial<{
@@ -289,9 +299,9 @@ function HomePage() {
     setOffset({ x: pad - minX * s, y: pad - minY * s });
   }, [drawableNodes]);
 
-  async function fetchUser() {
+  const fetchUser = useCallback(async () => {
     try {
-      const res = await fetch("/api/figma/me");
+      const res = await fetch("/api/figma/me", { credentials: "include" });
       const data = await res.json();
       if (!data.error) {
         setUser(data);
@@ -301,7 +311,7 @@ function HomePage() {
     } catch {}
     setLoading(false);
     return null;
-  }
+  }, []);
 
   // Check URL hash on mount to determine which page to show
   useEffect(() => {
@@ -352,6 +362,7 @@ function HomePage() {
           setRawRoots(project.rawRoots);
           setOriginalRawRoots(project.rawRoots);
           setLastFileKey(project.fileKey);
+          if (Array.isArray(project.interactions)) setInteractions(project.interactions);
           // Restore viewport if saved
           if (typeof project.scale === 'number') setScale(project.scale);
           if (project.offset) setOffset(project.offset);
@@ -372,7 +383,8 @@ function HomePage() {
         setFileName(project.name);
         setRawRoots(project.rawRoots);
         setOriginalRawRoots(project.rawRoots);
-        setLastFileKey(project.fileKey);
+  setLastFileKey(project.fileKey);
+  if (Array.isArray(project.interactions)) setInteractions(project.interactions);
         // Restore viewport if saved
         if (typeof project.scale === 'number') setScale(project.scale);
         if (project.offset) setOffset(project.offset);
@@ -390,7 +402,8 @@ function HomePage() {
       setFileName(project.name);
       setRawRoots(project.rawRoots);
       setOriginalRawRoots(project.rawRoots);
-      setLastFileKey(project.fileKey);
+  setLastFileKey(project.fileKey);
+  if (Array.isArray(project.interactions)) setInteractions(project.interactions);
       if (typeof project.scale === 'number') setScale(project.scale);
       if (project.offset) setOffset(project.offset);
       else setFitPending(true);
@@ -409,6 +422,7 @@ function HomePage() {
           setRawRoots(project.rawRoots || []);
           setOriginalRawRoots(project.rawRoots || []);
           setLastFileKey(project.fileKey);
+          if (Array.isArray(project.interactions)) setInteractions(project.interactions);
           setFitPending(true);
           // Store in sessionStorage and localStorage for next reload
           sessionStorage.setItem('currentProject', JSON.stringify(project));
@@ -527,6 +541,7 @@ function HomePage() {
           fileKey: lastFileKey,
           scale, // Save scale with project
           offset, // Save offset with project
+          interactions,
         };
         localStorage.setItem(`project-${projectId}`, JSON.stringify(projectData));
         sessionStorage.setItem('currentProject', JSON.stringify(projectData));
@@ -672,6 +687,112 @@ function HomePage() {
     a.remove();
     URL.revokeObjectURL(url);
   }
+
+  // Debounced autosave to /api/projects/{id}
+  useEffect(() => {
+    // Only autosave when a project is open via hash navigation
+    if (typeof window === 'undefined') return;
+    const hash = window.location.hash || '';
+    if (!hash.startsWith('#project=')) return;
+    const projectId = hash.replace('#project=', '');
+
+    // Need something to save
+    if (!rawRoots || rawRoots.length === 0) return;
+
+    // Clear previous debounce
+    if (autoSaveTimerRef.current) {
+      window.clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+
+    // Debounce 1200ms
+    autoSaveTimerRef.current = window.setTimeout(async () => {
+      setSaving("saving");
+      // Throttle: avoid saving too frequently
+      const now = Date.now();
+      if (now - lastAutoSaveAtRef.current < 1500) {
+        // Re-arm shortly later to respect throttle
+        autoSaveTimerRef.current = window.setTimeout(() => {
+          lastAutoSaveAtRef.current = Date.now();
+          void (async () => {
+            await autoSaveOnce(projectId);
+          })();
+        }, 1500 - (now - lastAutoSaveAtRef.current));
+        return;
+      }
+
+      lastAutoSaveAtRef.current = now;
+      await autoSaveOnce(projectId);
+    }, 1200);
+
+    return () => {
+      if (autoSaveTimerRef.current) {
+        window.clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawRoots, scale, offset, fileName, lastFileKey]);
+
+  const autoSaveOnce = useCallback(async (projectId: string) => {
+    // Deduplicate concurrent saves
+    if (autoSaveInFlightRef.current) {
+      try { await autoSaveInFlightRef.current; } catch { /* ignore */ }
+    }
+
+    const updateBody: any = {
+      name: fileName || undefined,
+      fileKey: lastFileKey || undefined,
+      rawRoots: rawRoots,
+      frameCount: (rawRoots || []).length,
+      scale,
+      offset,
+      interactions,
+      updatedAt: new Date().toISOString(),
+    };
+
+    autoSaveInFlightRef.current = fetch(`/api/projects/${projectId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updateBody),
+    })
+      .then(async (res) => {
+        const txt = await res.text();
+        let json: any = null;
+        try { json = txt ? JSON.parse(txt) : null; } catch { /* ignore */ }
+        if (!res.ok) {
+          const msg = json?.error || txt || `Autosave failed (${res.status})`;
+          console.warn(msg);
+          setSaving("idle");
+          return null;
+        }
+        // Update local caches for persistence
+        try {
+          const projectData = {
+            id: projectId,
+            name: fileName,
+            rawRoots,
+            fileKey: lastFileKey,
+            scale,
+            offset,
+            interactions,
+          };
+          sessionStorage.setItem('currentProject', JSON.stringify(projectData));
+          localStorage.setItem(`project-${projectId}`, JSON.stringify(projectData));
+          (window as any).__currentProject = projectData;
+        } catch { /* ignore */ }
+        // Show a brief "saved" state then fade to idle
+        setSaving("saved");
+        if (savingTimeoutRef.current) window.clearTimeout(savingTimeoutRef.current);
+        savingTimeoutRef.current = window.setTimeout(() => setSaving("idle"), 1500);
+        return json;
+      })
+      .finally(() => {
+        autoSaveInFlightRef.current = null;
+      });
+
+    try { await autoSaveInFlightRef.current; } catch { /* ignore */ }
+  }, [fileName, lastFileKey, offset, rawRoots, scale]);
   // Reset canvas to original state: nodes, selection, zoom, pan
   const [resetKey, setResetKey] = useState(0);
   const handleResetCanvas = () => {
@@ -827,6 +948,7 @@ function HomePage() {
     setSelectedIds(new Set());
     // prune interactions where source or target was deleted
     setInteractions((prev) => prev.filter((it) => !ids.has(it.sourceId) && !ids.has(it.targetId)));
+    setSelectedInteractionId(null);
   }, [rawRoots, selectedIds, selectedFrameId]);
 
   // NEW: group selected nodes (requires same parent)
@@ -960,99 +1082,66 @@ function HomePage() {
 
   async function commitLive() {
     try {
-      if (!lastFileKey) {
-        alert("Open a Figma file first so the fileKey is known.");
+      // Require an open project (loaded via hash navigation)
+      const hash = window.location.hash || "";
+      const isProject = hash.startsWith('#project=');
+      if (!isProject) {
+        alert('Open a project from Projects first to use Commit.');
+        return;
+      }
+      const projectId = hash.replace('#project=', '');
+
+      if (!rawRoots || rawRoots.length === 0) {
+        alert('Nothing to save: no frames/nodes loaded.');
         return;
       }
 
-      const normalizedKey = extractFileKey(lastFileKey) ?? lastFileKey;
-
-      const refW = selectedFrame?.width ??
-        Math.max(1, ...drawableNodes.map(n => n.x + n.width)) - Math.min(0, ...drawableNodes.map(n => n.x));
-      const refH = selectedFrame?.height ??
-        Math.max(1, ...drawableNodes.map(n => n.y + n.height)) - Math.min(0, ...drawableNodes.map(n => n.y));
-
-      const sourceNodes = rawRoots ?? [];
-
-      let computedRoots: any[] = [];
-      if (selectedFrame) {
-        const ref = selectedFrame;
-        const refNode = sourceNodes && findNodeById(sourceNodes, ref.id);
-        if (refNode && Array.isArray(refNode.children) && refNode.children.length > 0) {
-          computedRoots = [refNode];
-        } else {
-          const syntheticRoot = makeSyntheticRootFromRef(ref);
-          const all = flattenNodes(sourceNodes);
-          const allById = new Map<string, any>();
-          all.forEach((n) => { if (n && n.id) allById.set(String(n.id), n); });
-
-          const inside = all.filter((n) => {
-            const nodeRect = { x: Number(n.ax ?? n.x ?? 0), y: Number(n.ay ?? n.y ?? 0), w: Number(n.w ?? n.width ?? 0), h: Number(n.h ?? n.height ?? 0) };
-            const refRect = { x: Number(ref.x ?? 0), y: Number(ref.y ?? 0), w: Number(ref.width ?? 0), h: Number(ref.height ?? 0) };
-            return rectOverlaps(refRect, nodeRect);
-          });
-
-          const insideSet = new Set(inside.map((n) => String(n.id)));
-
-          const topLevel = inside.filter((n) => {
-            return !inside.some((p) => p !== n && rectContains({ x: p.ax ?? p.x ?? 0, y: p.ay ?? p.y ?? 0, w: p.w ?? p.width ?? 0, h: p.h ?? p.height ?? 0 },
-                                                                 { x: n.ax ?? n.x ?? 0, y: n.ay ?? n.y ?? 0, w: n.w ?? n.width ?? 0, h: n.h ?? n.height ?? 0 }));
-          });
-
-          syntheticRoot.children = topLevel.map((t) => rebuildSubtree(t, insideSet, ref));
-          computedRoots = [syntheticRoot];
-        } // end inner else
-      } else {
-        computedRoots = sourceNodes;
-      }
-
-      const payloadRoots = computedRoots;
-
-      const payload = {
-        fileKey: normalizedKey,
-        roots: payloadRoots,
-        refW: Math.round(refW),
-        refH: Math.round(refH),
-        fileName: fileName ?? undefined,
-        images,
-        referenceFrame: selectedFrame ?? null,
-        // NEW: include interactions for live publish (optional but helpful)
-        interactions,
-        forcePublish: true,
-        cacheBuster: Date.now(),
+      // Build update payload matching existing API usage
+      const updateBody: any = {
+        name: fileName || undefined,
+        fileKey: lastFileKey || undefined,
+        rawRoots: rawRoots,
+        frameCount: rawRoots.length,
       };
 
-      const res = await fetch("/api/live/publish", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+      // Optionally include view state for future use (backend may ignore unknown fields)
+  updateBody.scale = scale;
+  updateBody.offset = offset;
+  updateBody.interactions = interactions;
+      updateBody.updatedAt = new Date().toISOString();
+
+      const res = await fetch(`/api/projects/${projectId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateBody),
       });
-      if (res.status === 401) {
-        window.location.href = "/api/auth/login";
-        return;
-      }
+
+      const text = await res.text();
+      let json: any = null;
+      try { json = text ? JSON.parse(text) : null; } catch { /* ignore */ }
+
       if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(errText || "Publish failed");
+        const msg = json?.error || text || `Failed to save project (${res.status})`;
+        throw new Error(msg);
       }
 
-      let msg = "Published successfully";
+      // Update local caches for instant persistence
       try {
-        const text = await res.text();
-        if (text) {
-          try {
-            const j = JSON.parse(text);
-            if (j?.message) msg = j.message;
-            else if (typeof text === "string" && text.trim()) msg = text;
-          } catch {
-            msg = text;
-          }
-        }
-      } catch {
-        /* ignore parsing errors */
-      }
+        const projectData = {
+          id: projectId,
+          name: fileName,
+          rawRoots,
+          fileKey: lastFileKey,
+          scale,
+          offset,
+          interactions,
+        };
+        sessionStorage.setItem('currentProject', JSON.stringify(projectData));
+        localStorage.setItem(`project-${projectId}`, JSON.stringify(projectData));
+        (window as any).__currentProject = projectData;
+      } catch { /* ignore */ }
 
-      setCommitMessage(msg);
+      setCommitMessage('Project saved successfully');
       setCommitSuccess(true);
     } catch (e: any) {
       alert(e?.message || String(e));
@@ -1123,6 +1212,7 @@ function HomePage() {
 
   const removeInteraction = useCallback((id: string) => {
     setInteractions((prev) => prev.filter((it) => it.id !== id));
+    setSelectedInteractionId((curr) => (curr === id ? null : curr));
   }, []);
 
   const nodeLabelById = useCallback(
@@ -1173,7 +1263,11 @@ function HomePage() {
       if (e.key === "Delete" || e.key === "Backspace") {
         if (!cmdOrCtrl && !e.altKey) {
           e.preventDefault();
-          deleteSelected();
+          if (selectedInteractionId) {
+            removeInteraction(selectedInteractionId);
+          } else {
+            deleteSelected();
+          }
         }
         return;
       }
@@ -1192,7 +1286,7 @@ function HomePage() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [handleUndo, handleRedo, deleteSelected, groupSelected, ungroupSelected]);
+  }, [handleUndo, handleRedo, deleteSelected, groupSelected, ungroupSelected, selectedInteractionId, removeInteraction]);
 
   // Show projects page on client if routed there
   if (mounted && showProjects) {
@@ -1232,6 +1326,8 @@ function HomePage() {
           canRedo={redoStack.length > 0}
           onCommit={commitLive}
           onNavigateProjects={() => window.location.href = '/#projects'}
+          currentTool={currentTool}
+          onToolChange={setCurrentTool}
         />
       </div>
 
@@ -1270,6 +1366,10 @@ function HomePage() {
             setOffset={setOffset}
             selectedFrame={selectedFrame}
             images={images}
+            interactions={interactions}
+            selectedInteractionId={selectedInteractionId}
+            onSelectInteraction={(id) => setSelectedInteractionId(id)}
+            tool={currentTool}
           />
         </div>
 
@@ -1284,12 +1384,33 @@ function HomePage() {
         )}
       </div>
 
+      {/* Autosave indicator */}
+      {saving !== "idle" && (
+        <div
+          style={{
+            position: "fixed",
+            right: 16,
+            bottom: 16,
+            background: saving === "saving" ? "#111827" : "#065f46",
+            color: "white",
+            padding: "8px 12px",
+            borderRadius: 8,
+            boxShadow: "0 6px 20px rgba(0,0,0,0.25)",
+            fontSize: 12,
+            zIndex: 1800,
+          }}
+        >
+          {saving === "saving" ? "Saving…" : "All changes saved"}
+        </div>
+      )}
+
       {/* NEW: quick actions (create frame / rename frame / add connection) */}
       <FrameDock
         selectedFrame={selectedFrame}
         onNewFrame={handleCreateFrame}
         onRenameFrame={handleRenameFrame}
         onAddConnection={handleOpenAddConnection}
+        onChooseTool={(t) => setCurrentTool(t)}
       />
 
       {/* NEW: simple list of interactions for selected source */}
@@ -1331,6 +1452,99 @@ function HomePage() {
               ))}
           </div>
         </div>
+      )}
+
+      {/* Interaction Properties Panel */}
+      {selectedInteractionId && (
+        (() => {
+          const interaction = interactions.find((i) => i.id === selectedInteractionId);
+          if (!interaction) return null;
+          const [iType, setIType] = [interaction.type, (v: Interaction["type"]) => setInteractions(prev => prev.map(it => it.id === interaction.id ? { ...it, type: v, animation: v === "animation" ? (it.animation && it.animation.name !== "none" ? it.animation : { name: "fade", durationMs: 300, easing: "ease-in-out", direction: "right" }) : { name: "none" } } : it))];
+          const [iTrigger, setITrigger] = [interaction.trigger, (v: Interaction["trigger"]) => setInteractions(prev => prev.map(it => it.id === interaction.id ? { ...it, trigger: v } : it))];
+          const anim = interaction.animation || { name: "none" } as NonNullable<Interaction["animation"]>;
+          const setAnim = (patch: Partial<NonNullable<Interaction["animation"]>>) => {
+            setInteractions(prev => prev.map(it => it.id === interaction.id ? { ...it, animation: { ...(it.animation || { name: "none" }), ...patch } } : it));
+          };
+          return (
+            <div
+              style={{
+                position: "fixed",
+                right: 12,
+                bottom: 64,
+                zIndex: 1500,
+                minWidth: 280,
+                maxWidth: 360,
+                background: "#ffffff",
+                border: "1px solid #e5e7eb",
+                borderRadius: 10,
+                boxShadow: "0 12px 32px rgba(0,0,0,0.12)",
+                padding: 12,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                <div style={{ fontWeight: 600, fontSize: 14, color: "#111827" }}>Interaction</div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={() => setSelectedInteractionId(null)}
+                    title="Close"
+                    style={{ border: "1px solid #e5e7eb", background: "#fff", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12 }}
+                  >
+                    Close
+                  </button>
+                  <button
+                    onClick={() => removeInteraction(interaction.id)}
+                    title="Delete interaction"
+                    style={{ border: "1px solid #fecaca", background: "#fee2e2", color: "#991b1b", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12 }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "88px 1fr", gap: 8 }}>
+                <label style={{ fontSize: 12, color: "#374151", alignSelf: "center" }}>From</label>
+                <div style={{ fontSize: 12, color: "#111827" }}>{nodeLabelById(interaction.sourceId)}</div>
+                <label style={{ fontSize: 12, color: "#374151", alignSelf: "center" }}>To</label>
+                <div style={{ fontSize: 12, color: "#111827" }}>{nodeLabelById(interaction.targetId)}</div>
+                <label style={{ fontSize: 12, color: "#374151", alignSelf: "center" }}>Type</label>
+                <select value={iType} onChange={(e) => setIType(e.target.value as any)} style={{ padding: 6, fontSize: 12 }}>
+                  <option value="navigation">Navigation</option>
+                  <option value="animation">Animation</option>
+                </select>
+                <label style={{ fontSize: 12, color: "#374151", alignSelf: "center" }}>Trigger</label>
+                <select value={iTrigger} onChange={(e) => setITrigger(e.target.value as any)} style={{ padding: 6, fontSize: 12 }}>
+                  <option value="onClick">On Click</option>
+                  <option value="onTap">On Tap</option>
+                </select>
+                {iType === "animation" && (
+                  <>
+                    <label style={{ fontSize: 12, color: "#374151", alignSelf: "center" }}>Animation</label>
+                    <select value={anim.name} onChange={(e) => setAnim({ name: e.target.value as any })} style={{ padding: 6, fontSize: 12 }}>
+                      <option value="fade">Fade</option>
+                      <option value="slide">Slide</option>
+                      <option value="zoom">Zoom</option>
+                    </select>
+                    <label style={{ fontSize: 12, color: "#374151", alignSelf: "center" }}>Duration</label>
+                    <input type="number" min={0} step={50} value={anim.durationMs ?? 300} onChange={(e) => setAnim({ durationMs: parseInt(e.target.value || "300", 10) })} style={{ padding: 6, fontSize: 12 }} />
+                    <label style={{ fontSize: 12, color: "#374151", alignSelf: "center" }}>Easing</label>
+                    <select value={anim.easing ?? "ease-in-out"} onChange={(e) => setAnim({ easing: e.target.value as any })} style={{ padding: 6, fontSize: 12 }}>
+                      <option value="linear">Linear</option>
+                      <option value="ease-in">Ease-in</option>
+                      <option value="ease-out">Ease-out</option>
+                      <option value="ease-in-out">Ease-in-out</option>
+                    </select>
+                    <label style={{ fontSize: 12, color: "#374151", alignSelf: "center" }}>Direction</label>
+                    <select value={anim.direction ?? "right"} onChange={(e) => setAnim({ direction: e.target.value as any })} style={{ padding: 6, fontSize: 12 }}>
+                      <option value="right">Right</option>
+                      <option value="left">Left</option>
+                      <option value="up">Up</option>
+                      <option value="down">Down</option>
+                    </select>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })()
       )}
 
       {/* Connection Modal */}

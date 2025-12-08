@@ -105,11 +105,11 @@ function ResponsiveStage({ refW, refH, children }: { refW: number; refH: number;
     position: "relative", width: "100%", height: "100%", overflow: "auto", background: "#fff",
   };
   const aspectStyle: React.CSSProperties = {
-    position: "relative", width: "100%", aspectRatio: \`\${refW} / \${refH}\`,
+    position: "relative", width: "100%", aspectRatio: String(refW) + " / " + String(refH),
   };
   const stageStyle: React.CSSProperties = {
     position: "absolute", left: 0, top: 0, width: refW, height: refH,
-    transform: \`scale(\${scale})\`, transformOrigin: "top left",
+    transform: 'scale(' + String(scale) + ')', transformOrigin: "top left",
   };
 
   return (

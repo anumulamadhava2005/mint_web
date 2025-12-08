@@ -39,10 +39,11 @@ export async function GET(req: NextRequest) {
     const tokens = await exchangeCodeForToken(code);
 
   const res = NextResponse.redirect(new URL("/#projects", process.env.NEXT_PUBLIC_APP_URL!));
+    const isProd = process.env.NODE_ENV === "production";
     res.cookies.delete("oauth_state");
     res.cookies.set("figma_access", tokens.access_token, {
       httpOnly: true,
-      secure: true,
+      secure: isProd,
       sameSite: "lax",
       path: "/",
       maxAge: Math.max(60, tokens.expires_in - 60),
@@ -50,7 +51,7 @@ export async function GET(req: NextRequest) {
     if (tokens.refresh_token) {
       res.cookies.set("figma_refresh", tokens.refresh_token, {
         httpOnly: true,
-        secure: true,
+        secure: isProd,
         sameSite: "lax",
         path: "/",
         maxAge: 60 * 60 * 24 * 30, // ~30 days

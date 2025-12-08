@@ -371,13 +371,33 @@ export default function ProjectsPage() {
     initializeData();
   }, []);
 
+  const meCacheRef = useRef<{ time: number; data: any } | null>(null);
+  const meInFlightRef = useRef<Promise<any> | null>(null);
   const fetchUser = async () => {
     try {
-      const res = await fetch('/api/figma/me');
-      const data = await res.json();
-      if (!data.error) {
-        setUser(data);
+      const now = Date.now();
+      // Return cached value if within 15 seconds
+      if (meCacheRef.current && now - meCacheRef.current.time < 15000) {
+        setUser(meCacheRef.current.data);
+        return meCacheRef.current.data;
       }
+      // Deduplicate concurrent calls
+      if (meInFlightRef.current) {
+        return await meInFlightRef.current;
+      }
+      meInFlightRef.current = fetch('/api/figma/me', { credentials: 'include', cache: 'no-store' })
+        .then(async (res) => {
+          const data = await res.json();
+          if (!data.error) {
+            meCacheRef.current = { time: Date.now(), data };
+            setUser(data);
+          }
+          return data;
+        })
+        .finally(() => {
+          meInFlightRef.current = null;
+        });
+      return await meInFlightRef.current;
     } catch (e) {
       console.error('Failed to fetch user:', e);
     }

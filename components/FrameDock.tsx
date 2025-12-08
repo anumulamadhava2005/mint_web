@@ -3,7 +3,7 @@
 import { useState, useEffect, KeyboardEvent } from 'react';
 import Dock from './dock';
 import styles from './css/FrameDock.module.css';
-import { Plus, Edit, Share } from 'lucide-react'; 
+import { Plus, Edit, Share, Square, Circle, Type } from 'lucide-react'; 
 
 type Frame = { id: string; name?: string };
 
@@ -12,6 +12,7 @@ interface FrameDockProps {
   onNewFrame: () => void;
   onRenameFrame: (newName: string) => void;
   onAddConnection: () => void;
+  onChooseTool?: (tool: 'rect' | 'ellipse' | 'text') => void;
 }
 
 export default function FrameDock({
@@ -19,6 +20,7 @@ export default function FrameDock({
   onNewFrame,
   onRenameFrame,
   onAddConnection,
+  onChooseTool,
 }: FrameDockProps) {
   const [isRenaming, setIsRenaming] = useState(false);
   const [nameInput, setNameInput] = useState(selectedFrame?.name || '');
@@ -47,6 +49,21 @@ export default function FrameDock({
       icon: <Plus color="#000" size={24} />,
       label: 'New Frame',
       onClick: onNewFrame,
+    },
+    {
+      icon: <Square color="#000" size={22} />,
+      label: 'Rectangle',
+      onClick: () => onChooseTool?.('rect'),
+    },
+    {
+      icon: <Circle color="#000" size={22} />,
+      label: 'Ellipse',
+      onClick: () => onChooseTool?.('ellipse'),
+    },
+    {
+      icon: <Type color="#000" size={22} />,
+      label: 'Text',
+      onClick: () => onChooseTool?.('text'),
     },
   ];
 

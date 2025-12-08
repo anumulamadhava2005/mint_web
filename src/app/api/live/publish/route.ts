@@ -1,7 +1,7 @@
 // app/api/live/publish/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { setSnapshot } from "../store";
+import { setSnapshot, getSnapshot } from "../store";
 import fs from "fs";
 import path from "path";
 
@@ -217,7 +217,7 @@ async function getImagesByRef(fileKey: string, imageRefs: string[], token: strin
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { fileKey, roots, manifest, refW, refH, referenceFrame, images: clientImages } = body as any;
+  const { fileKey, roots, manifest, refW, refH, referenceFrame, images: clientImages, interactions: rawInteractions } = body as any;
 
     // Basic validation
     if (!fileKey || !Array.isArray(roots) || !refW || !refH) {
@@ -440,12 +440,56 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Persist live snapshot in memory
+    // Determine if any top-level frames are newly added compared to previous snapshot
+    let focusFrameId: string | null | undefined = undefined;
+    try {
+      const prev = getSnapshot(fileKey);
+      if (prev && Array.isArray(prev.payload?.roots)) {
+        const prevIds = new Set(prev.payload.roots.map((r: any) => String(r.id)));
+        const newRoots = mappedRoots.filter((r: any) => !prevIds.has(String(r.id)));
+        if (newRoots.length > 0) {
+          // Choose the last newly-added top-level frame as the focus target
+          focusFrameId = String(newRoots[newRoots.length - 1].id ?? newRoots[newRoots.length - 1].name ?? "");
+        }
+      }
+    } catch (e) {
+      // If anything goes wrong comparing snapshots, don't block publish — just continue without focusFrameId
+      console.warn("Failed to compute focusFrameId:", e);
+      focusFrameId = undefined;
+    }
+
+    // Build interaction list: filter to known nodes and dedupe
+    let interactions: any[] = Array.isArray(rawInteractions) ? rawInteractions : [];
+    try {
+      const idSet = new Set<string>();
+      const stack = [...mappedRoots];
+      while (stack.length) {
+        const n = stack.pop()!;
+        if (n?.id != null) idSet.add(String(n.id));
+        if (Array.isArray(n?.children)) for (const c of n.children) stack.push(c);
+      }
+      interactions = interactions.filter((it: any) => {
+        if (!it || !it.sourceId) return false;
+        const sOk = idSet.has(String(it.sourceId));
+        const tOk = !it.targetId || idSet.has(String(it.targetId));
+        return sOk && tOk;
+      });
+      const seen = new Set<string>();
+      interactions = interactions.filter((it: any) => {
+        const key = [it.sourceId, it.targetId, it.type, it.trigger, it?.animation?.name, it?.animation?.durationMs, it?.animation?.easing, it?.animation?.direction].map(v=>String(v ?? ""))
+          .join("|");
+        if (seen.has(key)) return false; seen.add(key); return true;
+      });
+    } catch {}
+
+    // Persist live snapshot in memory (include focusFrameId and interactions when present)
     const snap = setSnapshot(fileKey, {
       roots: mappedRoots,
       manifest: mergedManifest,
       refW: Math.round(refW),
       refH: Math.round(refH),
+      interactions,
+      focusFrameId: focusFrameId ?? null,
     });
 
     // Write a static backup snapshot (optional)
@@ -459,7 +503,7 @@ export async function POST(req: NextRequest) {
         const outPath = path.join(publicDir, `${safeName}.json`);
         const payload = {
           version: snap.version,
-          payload: { roots: mappedRoots, manifest: mergedManifest, refW: Math.round(refW), refH: Math.round(refH) },
+          payload: { roots: mappedRoots, manifest: mergedManifest, refW: Math.round(refW), refH: Math.round(refH), interactions, focusFrameId: focusFrameId ?? null },
         };
         await fs.promises.writeFile(outPath, JSON.stringify(payload, null, 2), "utf8");
         console.info(`Wrote static snapshot to ${outPath}`);

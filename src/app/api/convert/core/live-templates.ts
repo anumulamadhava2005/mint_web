@@ -15,7 +15,7 @@ function ResponsiveStage({ refW, refH, children }: { refW: number; refH: number;
   return (
     <div ref={outerRef} style={{ position: "relative", width: "100%", height: "100vh", overflow: "auto", background: "#fff" }}>
       <div style={{ width: "100%", height: \`\${Math.max(1, refH * scale)}px\` }} />
-      <div style={{ position: "absolute", left: 0, top: 0, width: refW, height: refH, transform: \`scale(\${scale})\`, transformOrigin: "top left" }}>
+  <div style={{ position: "absolute", left: 0, top: 0, width: refW, height: refH, transform: 'scale(' + String(scale) + ')', transformOrigin: "top left" }}>
         {children}
       </div>
     </div>

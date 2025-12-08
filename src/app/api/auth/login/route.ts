@@ -13,10 +13,11 @@ export async function GET() {
     `&state=${state}&response_type=code`;
 
   const res = NextResponse.redirect(url);
+  const isProd = process.env.NODE_ENV === "production";
   // short-lived state cookie to prevent CSRF
   res.cookies.set("oauth_state", state, {
     httpOnly: true,
-    secure: true,
+    secure: isProd,
     sameSite: "lax",
     path: "/",
     maxAge: 10 * 60,

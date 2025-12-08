@@ -54,9 +54,10 @@ export async function GET(req: NextRequest) {
         // If successful, update cookies with new tokens
         if (response.ok) {
           const res = NextResponse.json(await response.json());
+          const isProd = process.env.NODE_ENV === "production";
           res.cookies.set("figma_access", newTokens.access_token, {
             httpOnly: true,
-            secure: true,
+            secure: isProd,
             sameSite: "lax",
             path: "/",
             maxAge: Math.max(60, newTokens.expires_in - 60),
@@ -64,7 +65,7 @@ export async function GET(req: NextRequest) {
           if (newTokens.refresh_token) {
             res.cookies.set("figma_refresh", newTokens.refresh_token, {
               httpOnly: true,
-              secure: true,
+              secure: isProd,
               sameSite: "lax",
               path: "/",
               maxAge: 60 * 60 * 24 * 30, // ~30 days

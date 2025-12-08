@@ -114,8 +114,8 @@ const TreeNode = defineComponent({
 
 <template>
   <div ref="outerRef" style="position:relative;width:100%;height:100%;overflow:auto;background:#fff;">
-    <div :style="{ position:'relative', width:'100%', aspectRatio: \`\${refW} / \${refH}\` }">
-      <div :style="{ position:'absolute', left:'0px', top:'0px', width: refW + 'px', height: refH + 'px', transform: \`scale(\${scale})\`, transformOrigin: 'top left' }">
+  <div :style="{ position:'relative', width:'100%', aspectRatio: String(refW) + ' / ' + String(refH) }">
+  <div :style="{ position:'absolute', left:'0px', top:'0px', width: refW + 'px', height: refH + 'px', transform: 'scale(' + String(scale) + ')', transformOrigin: 'top left' }">
         <template v-for="(n, i) in roots" :key="n.id + ':' + i">
           <div v-if="n.children.length>0 && !isImage(n) && !isText(n)" :style="styleFor(n)" :data-name="n.name">
             <TreeNode v-for="(c, j) in n.children" :key="c.id + ':' + j" :node="c" />
