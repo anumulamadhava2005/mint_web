@@ -38,6 +38,14 @@ function normalizeCommon(n: any, ax: number, ay: number, w: number, h: number) {
   out.h = h;
   out.width = out.width ?? w;     // size mapping: width <- w
   out.height = out.height ?? h;   // size mapping: height <- h
+  // Ensure canonical size fields are consistent: prefer explicit width/height
+  // and keep w/h in sync so consumers can rely on either set.
+  try {
+    if (out.width != null) out.w = Math.round(Number(out.width));
+    if (out.height != null) out.h = Math.round(Number(out.height));
+  } catch (e) {
+    // ignore conversion errors and keep previous w/h
+  }
   out.textRaw = n.textRaw ?? n.text?.characters ?? n.characters ?? "";
   if (out.absoluteBoundingBox) delete out.absoluteBoundingBox;
   return out;
@@ -92,9 +100,10 @@ function mapNoRef(
     mapped.x = hasLocal ? Number(node.x) : 0;
     mapped.y = hasLocal ? Number(node.y) : 0;
   } else {
-    // child: convert absolute->parent-relative if local not provided
-    mapped.x = hasLocal ? Number(node.x) : Math.round(ax - parentAbsX);
-    mapped.y = hasLocal ? Number(node.y) : Math.round(ay - parentAbsY);
+    // child: always compute coordinates relative to parent absolute coords
+    // (ignore any stored absolute-looking x/y on the child to ensure consistency)
+    mapped.x = Math.round(ax - parentAbsX);
+    mapped.y = Math.round(ay - parentAbsY);
   }
   mapped.width = mapped.width ?? mapped.w;
   mapped.height = mapped.height ?? mapped.h;
@@ -334,7 +343,8 @@ export async function POST(req: NextRequest) {
           try {
             const u = new URL(foundUrl, originHeader);
             const hostHeader = req.headers.get("host") || "";
-            if (u.hostname && hostHeader && u.hostname !== hostHeader && /^https?:$/i.test(u.protocol)) {
+            // Skip proxy wrapping for api.mintit.pro URLs
+            if (u.hostname && hostHeader && u.hostname !== hostHeader && /^https?:$/i.test(u.protocol) && !foundUrl.includes('api.mintit.pro')) {
               mergedManifest[ref] = `/api/image-proxy?url=${encodeURIComponent(foundUrl)}`;
             } else {
               mergedManifest[ref] = foundUrl;
@@ -492,25 +502,36 @@ export async function POST(req: NextRequest) {
       focusFrameId: focusFrameId ?? null,
     });
 
-    // Write a static backup snapshot (optional)
-    (async () => {
-      try {
-        const publicDir = path.join(process.cwd(), "public", "live", "snapshots");
-        await fs.promises.mkdir(publicDir, { recursive: true });
-        // try to derive a safe name from the fileKey; fallback to full encoded key
-        const parts = fileKey.split("/").filter(Boolean);
-        const safeName = encodeURIComponent(parts[3] ?? fileKey);
-        const outPath = path.join(publicDir, `${safeName}.json`);
-        const payload = {
-          version: snap.version,
-          payload: { roots: mappedRoots, manifest: mergedManifest, refW: Math.round(refW), refH: Math.round(refH), interactions, focusFrameId: focusFrameId ?? null },
-        };
-        await fs.promises.writeFile(outPath, JSON.stringify(payload, null, 2), "utf8");
-        console.info(`Wrote static snapshot to ${outPath}`);
-      } catch (e: any) {
-        console.warn("Failed to write static snapshot file:", e?.message || String(e));
+    // Write a static backup snapshot (optional) - await to ensure it completes
+    try {
+      const publicDir = path.join(process.cwd(), "public", "live", "snapshots");
+      await fs.promises.mkdir(publicDir, { recursive: true });
+      
+      // Extract filename from fileKey:
+      // - If it's a Figma URL like "https://www.figma.com/file/ABC123/Name", extract "ABC123"
+      // - If it's already just a key like "BO4SUjwC6DDP1zHCu1RcaJ", use it as-is
+      let safeName = fileKey;
+      if (fileKey.includes('/')) {
+        const parts = fileKey.split('/').filter(Boolean);
+        // Check if it looks like a Figma URL: [..., 'file', 'KEY', ...]
+        const fileIndex = parts.indexOf('file');
+        if (fileIndex >= 0 && parts.length > fileIndex + 1) {
+          safeName = parts[fileIndex + 1];
+        } else {
+          // Fallback: use last non-empty part
+          safeName = parts[parts.length - 1] || fileKey;
+        }
       }
-    })();
+      const outPath = path.join(publicDir, `${safeName}.json`);
+      const payload = {
+        version: snap.version,
+        payload: { roots: mappedRoots, manifest: mergedManifest, refW: Math.round(refW), refH: Math.round(refH), interactions, focusFrameId: focusFrameId ?? null },
+      };
+      await fs.promises.writeFile(outPath, JSON.stringify(payload, null, 2), "utf8");
+      console.info(`[PUBLISH] Wrote static snapshot to ${outPath} (version ${snap.version}, ${mappedRoots.length} roots)`);
+    } catch (e: any) {
+      console.error("[PUBLISH] Failed to write static snapshot file:", e?.message || String(e));
+    }
 
     const result = {
       message: "Publish completed",

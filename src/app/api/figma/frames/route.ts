@@ -206,6 +206,28 @@ type FigmaNode = {
   characters?: string | null;
   absoluteBoundingBox?: { x: number; y: number; width: number; height: number } | null;
   children?: FigmaNode[];
+  // High priority visual features
+  opacity?: number | null;
+  blendMode?: string | null;
+  rotation?: number | null;
+  clipsContent?: boolean | null;
+  textAlignHorizontal?: string | null;
+  textAlignVertical?: string | null;
+  paragraphSpacing?: number | null;
+  paragraphIndent?: number | null;
+  // Auto Layout properties
+  layoutMode?: "NONE" | "HORIZONTAL" | "VERTICAL" | null;
+  primaryAxisSizingMode?: "FIXED" | "AUTO" | null;
+  counterAxisSizingMode?: "FIXED" | "AUTO" | null;
+  primaryAxisAlignItems?: "MIN" | "CENTER" | "MAX" | "SPACE_BETWEEN" | null;
+  counterAxisAlignItems?: "MIN" | "CENTER" | "MAX" | null;
+  paddingLeft?: number | null;
+  paddingRight?: number | null;
+  paddingTop?: number | null;
+  paddingBottom?: number | null;
+  itemSpacing?: number | null;
+  layoutAlign?: "INHERIT" | "STRETCH" | "MIN" | "CENTER" | "MAX" | null;
+  layoutGrow?: number | null;
 };
 
 function to255(v: number) { return Math.round((v ?? 0) * 255); }
@@ -289,6 +311,10 @@ function extractTextStyles(node: FigmaNode) {
     textDecoration,
     textCase,
     characters: node?.characters ?? null,
+    textAlignHorizontal: node?.textAlignHorizontal ?? null,
+    textAlignVertical: node?.textAlignVertical ?? null,
+    paragraphSpacing: node?.paragraphSpacing ?? null,
+    paragraphIndent: node?.paragraphIndent ?? null,
   };
 }
 
@@ -300,6 +326,37 @@ function nodeSummary(node: FigmaNode) {
   const effects = extractEffects(node);
   const text = extractTextStyles(node);
 
+  // Extract layout properties
+  const layoutMode = node?.layoutMode ?? null;
+  const paddingLeft = node?.paddingLeft ?? null;
+  const paddingRight = node?.paddingRight ?? null;
+  const paddingTop = node?.paddingTop ?? null;
+  const paddingBottom = node?.paddingBottom ?? null;
+  const itemSpacing = node?.itemSpacing ?? null;
+  
+  // Map Figma's primaryAxisAlignItems to CSS justifyContent
+  let justifyContent = null;
+  if (node?.primaryAxisAlignItems) {
+    const alignMap: Record<string, string> = {
+      "MIN": "flex-start",
+      "CENTER": "center",
+      "MAX": "flex-end",
+      "SPACE_BETWEEN": "space-between",
+    };
+    justifyContent = alignMap[node.primaryAxisAlignItems] || null;
+  }
+  
+  // Map Figma's counterAxisAlignItems to CSS alignItems
+  let alignItems = null;
+  if (node?.counterAxisAlignItems) {
+    const alignMap: Record<string, string> = {
+      "MIN": "flex-start",
+      "CENTER": "center",
+      "MAX": "flex-end",
+    };
+    alignItems = alignMap[node.counterAxisAlignItems] || null;
+  }
+
   return {
     id: node?.id,
     name: node?.name,
@@ -310,6 +367,24 @@ function nodeSummary(node: FigmaNode) {
     corners,
     effects,
     text,
+    // High priority visual features
+    opacity: node?.opacity ?? null,
+    blendMode: node?.blendMode ?? null,
+    rotation: node?.rotation ?? null,
+    clipsContent: node?.clipsContent ?? null,
+    fills: node?.fills?.map(p => extractFill([p])).filter(Boolean) ?? null,
+    strokes: node?.strokes?.map(() => stroke).filter(Boolean) ?? null,
+    // Layout properties
+    layoutMode,
+    paddingLeft,
+    paddingRight,
+    paddingTop,
+    paddingBottom,
+    itemSpacing,
+    justifyContent,
+    alignItems,
+    // Background color (extract from fill for convenience)
+    backgroundColor: fill?.type === "SOLID" ? fill.color : null,
   };
 }
 

@@ -5,7 +5,7 @@ export type UploadOptions = {
   endpoint?: string // override endpoint (default Mint API)
 }
 
-const DEFAULT_ENDPOINT = "https://api.mintit.pro/upload"
+const DEFAULT_ENDPOINT = "https://api.mintit.pro/upload/"
 
 // XHR-based uploader so we can report progress in browsers
 export async function uploadToMintApi(file: File, opts: UploadOptions = {}): Promise<string | null> {

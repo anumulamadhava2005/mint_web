@@ -156,13 +156,24 @@ export default function CanvasStage(props: {
   const originalPositions = useRef<Map<string, { x: number, y: number }>>(new Map())
   const panStartOffset = useRef<{ x: number; y: number } | null>(null)
   const dragOffsetsRef = useRef<Map<string, { dx: number, dy: number }>>(new Map())
+  // Resize state for interactive resizing of a single selected node
+  const resizeRef = useRef<null | {
+    nodeId: string,
+    handle: "n"|"s"|"e"|"w"|"ne"|"nw"|"se"|"sw",
+    start: { wx: number; wy: number },
+    orig: { x: number; y: number; w: number; h: number }
+  }>(null)
   // Creation state for tools
   const creatingRef = useRef<null | {
     tool: "rect" | "ellipse" | "text",
     start: { wx: number; wy: number },
     current: { wx: number; wy: number },
     previewId: string,
+    parentId: string | null,
+    parentOffset: { x: number; y: number },
   }>(null)
+  // Clipboard for copy/paste
+  const clipboardRef = useRef<NodeInput[]>([])
   // Debug logging
   useEffect(() => {
     console.log('=== Canvas Debug Info ===');
@@ -186,7 +197,10 @@ export default function CanvasStage(props: {
       const walk = (node: any) => {
         if (node?.fill?.type === "IMAGE" && typeof node.fill.imageRef === "string") {
           let imageUrl = node.fill.imageRef;
-          if (imageUrl.startsWith('http') && !imageUrl.includes(window.location.hostname)) {
+          // Only proxy external images that aren't from api.mintit.pro
+          if (imageUrl.startsWith('http') && 
+              !imageUrl.includes(window.location.hostname) && 
+              !imageUrl.includes('api.mintit.pro')) {
             imageUrl = `/api/image-proxy?url=${encodeURIComponent(imageUrl)}`;
           }
           out[node.id] = imageUrl;
@@ -328,6 +342,41 @@ export default function CanvasStage(props: {
       
       // Draw only the visible nodes
       drawNodes(ctx, visibleNodes, offset, scale, selectedIds, dragOffsetsRef.current, stateRef.current.rawRoots, hoveredId, loadedImages)
+
+      // Draw resize handles for a single selected node
+      if (selectedIds.size === 1) {
+        const selId = Array.from(selectedIds)[0]
+        const node = currentDrawableNodes.find(n => n.id === selId)
+        if (node) {
+          const sx = offset.x + node.x * scale
+          const sy = offset.y + node.y * scale
+          const sw = node.width * scale
+          const sh = node.height * scale
+          const handleSize = 6
+          const half = handleSize / 2
+          const points = [
+            { x: sx,         y: sy,          k: 'nw' },
+            { x: sx + sw/2,  y: sy,          k: 'n'  },
+            { x: sx + sw,    y: sy,          k: 'ne' },
+            { x: sx + sw,    y: sy + sh/2,   k: 'e'  },
+            { x: sx + sw,    y: sy + sh,     k: 'se' },
+            { x: sx + sw/2,  y: sy + sh,     k: 's'  },
+            { x: sx,         y: sy + sh,     k: 'sw' },
+            { x: sx,         y: sy + sh/2,   k: 'w'  },
+          ] as const
+          octx.save()
+          octx.fillStyle = '#fff'
+          octx.strokeStyle = '#2563eb'
+          octx.lineWidth = 1
+          points.forEach(p => {
+            octx.beginPath()
+            octx.rect(Math.round(p.x - half) + 0.5, Math.round(p.y - half) + 0.5, handleSize, handleSize)
+            octx.fill()
+            octx.stroke()
+          })
+          octx.restore()
+        }
+      }
       // Marquee selection
       if (isMarquee && marqueeStart.current && lastPointer.current) {
         const s1x = offset.x + marqueeStart.current.wx * scale
@@ -619,7 +668,11 @@ export default function CanvasStage(props: {
   useEffect(() => {
     const handleResize = () => {
       const w = window.innerWidth, h = window.innerHeight;
-      setViewportSize({ width: w, height: h });
+      // Avoid updating state with a new object if dimensions didn't change
+      setViewportSize(prev => {
+        if (prev.width === w && prev.height === h) return prev;
+        return { width: w, height: h };
+      });
       const dpr = window.devicePixelRatio || 1;
       [canvasRef.current, overlayRef.current].forEach(c => {
         if (!c) return;
@@ -664,6 +717,111 @@ export default function CanvasStage(props: {
         (target as HTMLElement).isContentEditable === true
       );
       if (isTyping) return;
+
+      // Edit shortcuts when selection exists
+      const ids = Array.from(stateRef.current.selectedIds)
+      if (ids.length > 0) {
+        // Delete selected
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+          e.preventDefault();
+          if (stateRef.current.rawRoots) {
+            const next = removeNodesByIds(stateRef.current.rawRoots, new Set(ids))
+            setRawRoots(next)
+            setSelectedIds(new Set())
+            hasUserChanges.current = true
+            requestRedraw()
+            return
+          }
+        }
+        // Duplicate selected (Ctrl+D)
+        if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'd')) {
+          e.preventDefault();
+          if (stateRef.current.rawRoots) {
+            const { next, newIds } = duplicateNodesByIds(stateRef.current.rawRoots, new Set(ids))
+            setRawRoots(next)
+            setSelectedIds(new Set(newIds))
+            hasUserChanges.current = true
+            requestRedraw()
+            return
+          }
+        }
+        // Copy selected (Ctrl+C)
+        if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'c')) {
+          e.preventDefault();
+          if (stateRef.current.rawRoots) {
+            const nodesToCopy = ids.map(id => findNodeInTree(stateRef.current.rawRoots!, id)).filter(Boolean);
+            if (nodesToCopy.length > 0) {
+              clipboardRef.current = nodesToCopy as NodeInput[];
+              console.log('[CLIPBOARD] Copied', nodesToCopy.length, 'nodes');
+            }
+            return;
+          }
+        }
+        // Cut selected (Ctrl+X)
+        if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'x')) {
+          e.preventDefault();
+          if (stateRef.current.rawRoots) {
+            const nodesToCopy = ids.map(id => findNodeInTree(stateRef.current.rawRoots!, id)).filter(Boolean);
+            if (nodesToCopy.length > 0) {
+              clipboardRef.current = nodesToCopy as NodeInput[];
+              const next = removeNodesByIds(stateRef.current.rawRoots, new Set(ids));
+              setRawRoots(next);
+              setSelectedIds(new Set());
+              hasUserChanges.current = true;
+              requestRedraw();
+              console.log('[CLIPBOARD] Cut', nodesToCopy.length, 'nodes');
+            }
+            return;
+          }
+        }
+        // Paste (Ctrl+V) - insert into frame under cursor or selectedFrame
+        if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'v')) {
+          e.preventDefault();
+          if (stateRef.current.rawRoots && clipboardRef.current && clipboardRef.current.length > 0) {
+            const cloned = clipboardRef.current.map(n => cloneNodeWithNewId(n));
+            // Determine parent: use selectedFrame if available, else top-level
+            const parentId = selectedFrame?.id || null;
+            let nextRoots = stateRef.current.rawRoots;
+            const newIds: string[] = [];
+            for (const node of cloned) {
+              newIds.push(node.id);
+              // Offset pasted nodes slightly
+              (node as any).x = ((node as any).x ?? 0) + 20;
+              (node as any).y = ((node as any).y ?? 0) + 20;
+              if (parentId) {
+                nextRoots = updateNodePositionsForInsert(nextRoots, parentId, node);
+              } else {
+                nextRoots = [...nextRoots, node];
+              }
+            }
+            setRawRoots(nextRoots);
+            setSelectedIds(new Set(newIds));
+            hasUserChanges.current = true;
+            requestRedraw();
+            console.log('[CLIPBOARD] Pasted', cloned.length, 'nodes into', parentId || 'top-level');
+            return;
+          }
+        }
+        // Nudge with arrows
+        const step = e.shiftKey ? 10 : 1
+        let dx = 0, dy = 0
+        if (e.key === 'ArrowLeft') dx = -step
+        else if (e.key === 'ArrowRight') dx = step
+        else if (e.key === 'ArrowUp') dy = -step
+        else if (e.key === 'ArrowDown') dy = step
+        if (dx !== 0 || dy !== 0) {
+          e.preventDefault()
+          if (stateRef.current.rawRoots) {
+            const moved = new Map<string, { dx: number; dy: number }>()
+            ids.forEach(id => moved.set(id, { dx, dy }))
+            const next = updateNodePositions(stateRef.current.rawRoots, moved)
+            setRawRoots(next)
+            hasUserChanges.current = true
+            requestRedraw()
+            return
+          }
+        }
+      }
 
       if (e.key === "Control") keysRef.current.ctrl = true;
       if (e.key === "Meta") keysRef.current.meta = true;
@@ -841,52 +999,118 @@ export default function CanvasStage(props: {
       
       // Always capture the pointer
       target.setPointerCapture(e.pointerId);
+
+      // Check for resize handle hit first (single selection)
+      if (stateRef.current.selectedIds.size === 1 && !keysRef.current.space) {
+        const selId = Array.from(stateRef.current.selectedIds)[0]
+        const drawable = stateRef.current.drawableNodes.find(n => n.id === selId)
+        if (drawable) {
+          const rect = target.getBoundingClientRect()
+          const sx = stateRef.current.offset.x + drawable.x * stateRef.current.scale
+          const sy = stateRef.current.offset.y + drawable.y * stateRef.current.scale
+          const sw = drawable.width * stateRef.current.scale
+          const sh = drawable.height * stateRef.current.scale
+          const handleSize = 8
+          const half = handleSize / 2
+          const handles = [
+            { key: "nw" as const, x: sx,         y: sy },
+            { key: "n"  as const, x: sx + sw/2,  y: sy },
+            { key: "ne" as const, x: sx + sw,    y: sy },
+            { key: "e"  as const, x: sx + sw,    y: sy + sh/2 },
+            { key: "se" as const, x: sx + sw,    y: sy + sh },
+            { key: "s"  as const, x: sx + sw/2,  y: sy + sh },
+            { key: "sw" as const, x: sx,         y: sy + sh },
+            { key: "w"  as const, x: sx,         y: sy + sh/2 },
+          ]
+          const px = e.clientX - rect.left
+          const py = e.clientY - rect.top
+          const hit = handles.find(h => Math.abs(px - h.x) <= half + 2 && Math.abs(py - h.y) <= half + 2)
+          if (hit) {
+            const { wx, wy } = toWorld(e.clientX, e.clientY)
+            resizeRef.current = {
+              nodeId: selId,
+              handle: hit.key,
+              start: { wx, wy },
+              orig: { x: drawable.x, y: drawable.y, w: drawable.width, h: drawable.height }
+            }
+            modeRef.current = 'drag'
+            requestRedraw()
+            return
+          }
+        }
+      }
       // Creation tools start: rect/ellipse/text
       if (!keysRef.current.space && (tool === 'rect' || tool === 'ellipse' || tool === 'text')) {
         const { wx, wy } = toWorld(e.clientX, e.clientY);
         const id = `${tool}_${Date.now().toString(36)}`;
+        
+        // Determine parent: hit-test frames under cursor, fallback to selectedFrame, else top-level
+        let parentId: string | null = null;
+        let parentOffset = { x: 0, y: 0 };
+        
+        // Hit-test frames (iterate backwards to hit topmost first)
+        for (let i = drawableNodes.length - 1; i >= 0; i--) {
+          const n = drawableNodes[i];
+          if ((n.type || '').toUpperCase() === 'FRAME' && pointInRect(wx, wy, { x: n.x, y: n.y, w: n.width, h: n.height })) {
+            parentId = n.id;
+            parentOffset = { x: n.x, y: n.y };
+            break;
+          }
+        }
+        // Fallback to selectedFrame if no hit
+        if (!parentId && selectedFrame?.id) {
+          parentId = selectedFrame.id;
+          const parentNode = drawableNodes.find(n => n.id === parentId);
+          if (parentNode) {
+            parentOffset = { x: parentNode.x, y: parentNode.y };
+          }
+        }
+        
+        // Calculate position relative to parent (parent's x,y is the origin)
+        const relX = parentId ? wx - parentOffset.x : wx;
+        const relY = parentId ? wy - parentOffset.y : wy;
+        
         creatingRef.current = {
-          tool: tool as any,
+          tool: tool as "rect" | "ellipse" | "text",
           start: { wx, wy },
           current: { wx, wy },
           previewId: id,
+          parentId,
+          parentOffset,
         };
         modeRef.current = 'drag';
         hasUserChanges.current = true;
-        // Add a temporary node so we can see preview via drawNodes
+        
+        // Add a temporary node with proper initial dimensions
         if (rawRoots) {
-          const w = 1, h = 1;
-          const newNode: any = tool === 'text' ? {
+          const initialW = tool === 'text' ? 200 : 10;
+          const initialH = tool === 'text' ? 40 : 10;
+          
+          const newNode: any = {
             id,
-            type: 'TEXT',
-            name: 'Text',
-            x: wx,
-            y: wy,
-            width: 200,
-            height: 40,
-            text: { characters: 'Text', fontSize: 20, color: '#111' },
-            children: [],
-          } : {
-            id,
-            type: tool === 'ellipse' ? 'ELLIPSE' : 'FRAME',
-            name: tool === 'ellipse' ? 'Ellipse' : 'Rectangle',
-            x: wx,
-            y: wy,
-            width: w,
-            height: h,
-            w, h,
-            fill: { type: 'SOLID', color: '#ffffff' },
-            stroke: { color: '#111827', weight: 1 },
+            type: tool === 'text' ? 'TEXT' : (tool === 'ellipse' ? 'ELLIPSE' : 'FRAME'),
+            name: tool === 'text' ? 'Text' : (tool === 'ellipse' ? 'Ellipse' : 'Rectangle'),
+            x: relX,
+            y: relY,
+            width: initialW,
+            height: initialH,
+            w: initialW,
+            h: initialH,
+            fill: tool === 'text' ? null : { type: 'SOLID', color: '#ffffff' },
+            stroke: tool === 'text' ? null : { color: '#111827', weight: 1 },
             children: [],
           };
-          // Insert under selectedFrame if exists
-          const parentId = selectedFrame?.id || null;
+          
+          if (tool === 'text') {
+            newNode.text = { characters: 'Text', fontSize: 20, color: '#111' };
+            newNode.textRaw = 'Text';
+          }
+          
           if (parentId) {
             const nextRoots = updateNodePositionsForInsert(rawRoots, parentId, newNode);
             setRawRoots(nextRoots);
           } else {
-            const nextRoots = ([...(rawRoots || []), newNode] as NodeInput[]);
-            setRawRoots(nextRoots);
+            setRawRoots([...(rawRoots || []), newNode] as NodeInput[]);
           }
         }
         requestRedraw();
@@ -961,16 +1185,30 @@ export default function CanvasStage(props: {
           const c = creatingRef.current;
           const { wx, wy } = toWorld(e.clientX, e.clientY);
           c.current = { wx, wy };
-          // Update the temp node size/position
-          const sx = Math.min(c.start.wx, c.current.wx);
-          const sy = Math.min(c.start.wy, c.current.wy);
-          let w = Math.abs(c.current.wx - c.start.wx);
-          let h = Math.abs(c.current.wy - c.start.wy);
+          
+          // Calculate bounds in world coordinates
+          const worldMinX = Math.min(c.start.wx, wx);
+          const worldMinY = Math.min(c.start.wy, wy);
+          let w = Math.abs(wx - c.start.wx);
+          let h = Math.abs(wy - c.start.wy);
+          
+          // Enforce minimum size
+          w = Math.max(10, w);
+          h = Math.max(10, h);
+          
+          // Hold shift for square/circle
           if (e.shiftKey && (c.tool === 'rect' || c.tool === 'ellipse')) {
-            const s = Math.max(w, h); w = s; h = s;
+            const s = Math.max(w, h);
+            w = s;
+            h = s;
           }
+          
+          // Calculate position relative to parent (parent's x,y is origin)
+          const relX = c.parentId ? worldMinX - c.parentOffset.x : worldMinX;
+          const relY = c.parentId ? worldMinY - c.parentOffset.y : worldMinY;
+          
           if (rawRoots) {
-            const nextRoots = updateTempNode(rawRoots, c.previewId, sx, sy, Math.max(1, w), Math.max(1, h), c.tool);
+            const nextRoots = updateTempNode(rawRoots, c.previewId, relX, relY, w, h, c.tool);
             setRawRoots(nextRoots);
           }
           requestRedraw();
@@ -1029,6 +1267,42 @@ export default function CanvasStage(props: {
           return;
         }
         
+        // Handle active resize gesture
+        if (resizeRef.current) {
+          const rz = resizeRef.current
+          const { wx, wy } = toWorld(e.clientX, e.clientY)
+          const dx = wx - rz.start.wx
+          const dy = wy - rz.start.wy
+          const keepAspect = e.shiftKey
+          const fromCenter = e.altKey || e.ctrlKey
+          let { x, y, w, h } = rz.orig
+          const apply = (nx: number, ny: number, nw: number, nh: number) => {
+            const min = 1
+            nw = Math.max(min, nw)
+            nh = Math.max(min, nh)
+            if (keepAspect) {
+              const aspect = rz.orig.w / Math.max(1e-6, rz.orig.h)
+              if (nw / nh > aspect) nw = nh * aspect; else nh = nw / aspect
+            }
+            if (fromCenter) {
+              nx = rz.orig.x + (rz.orig.w - nw) / 2
+              ny = rz.orig.y + (rz.orig.h - nh) / 2
+            }
+            return { nx, ny, nw, nh }
+          }
+          if (rz.handle.includes('w')) { const nx = x + dx; const nw = (w - dx); const r = apply(nx, y, nw, h); x=r.nx; y=r.ny; w=r.nw; h=r.nh }
+          if (rz.handle.includes('e')) { const nw = (w + dx);             const r = apply(x, y, nw, h); x=r.nx; y=r.ny; w=r.nw; h=r.nh }
+          if (rz.handle.includes('n')) { const ny = y + dy; const nh = (h - dy); const r = apply(x, ny, w, nh); x=r.nx; y=r.ny; w=r.nw; h=r.nh }
+          if (rz.handle.includes('s')) { const nh = (h + dy);             const r = apply(x, y, w, nh); x=r.nx; y=r.ny; w=r.nw; h=r.nh }
+          if (rawRoots) {
+            const next = updateNodeRect(rawRoots, rz.nodeId, { x, y, width: w, height: h })
+            setRawRoots(next)
+            hasUserChanges.current = true
+          }
+          requestRedraw()
+          return
+        }
+
         if (modeRef.current === "drag" && dragStartScreen.current) {
           // Convert screen delta to world delta using current scale. This keeps
           // drag movement consistent even if scale changes while dragging.
@@ -1130,7 +1404,10 @@ export default function CanvasStage(props: {
       if (creatingRef.current) {
         const c = creatingRef.current;
         creatingRef.current = null;
-        // For text tool, focus edit could be implemented later; keep default text for now
+        // Select the created node
+        if (c.previewId) {
+          setSelectedIds(new Set([c.previewId]));
+        }
         modeRef.current = 'idle';
         requestRedraw();
         return;
@@ -1155,6 +1432,9 @@ export default function CanvasStage(props: {
               hasUserChanges.current = true;
             }
         }
+      } else if (resizeRef.current) {
+        // finalize resize
+        resizeRef.current = null;
       } else if (modeRef.current === 'marquee' && marqueeStart.current) {
         const { wx: endX, wy: endY } = toWorld(e.clientX, e.clientY);
         const sel = {
@@ -1209,11 +1489,125 @@ export default function CanvasStage(props: {
   useEffect(() => {
     if (isInitialized.current) requestRedraw();
   }, [selectedIds, offset, scale, requestRedraw]);
+
+  // Drag-drop handler for adding components from palette or external drag
+  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect || !rawRoots) return;
+    
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+    const wx = (sx - offset.x) / scale;
+    const wy = (sy - offset.y) / scale;
+    
+    // Try to get component data from dataTransfer
+    const componentData = e.dataTransfer.getData('application/json');
+    const textData = e.dataTransfer.getData('text/plain');
+    
+    let newNode: NodeInput | null = null;
+    
+    if (componentData) {
+      try {
+        const parsed = JSON.parse(componentData);
+        // Support { type, name, width, height, fill, ... } structure
+        const id = `drop_${Date.now().toString(36)}`;
+        newNode = {
+          id,
+          type: parsed.type || 'FRAME',
+          name: parsed.name || 'Dropped Component',
+          x: wx,
+          y: wy,
+          width: parsed.width || 100,
+          height: parsed.height || 100,
+          fill: parsed.fill || { type: 'SOLID', color: '#ffffff' },
+          stroke: parsed.stroke,
+          children: parsed.children || [],
+        } as any;
+      } catch (err) {
+        console.warn('[DROP] Failed to parse component JSON:', err);
+      }
+    } else if (textData) {
+      // Create a text node from dropped text
+      const id = `text_drop_${Date.now().toString(36)}`;
+      newNode = {
+        id,
+        type: 'TEXT',
+        name: 'Text',
+        x: wx,
+        y: wy,
+        width: 200,
+        height: 40,
+        text: { characters: textData, fontSize: 20, color: '#111' },
+        children: [],
+      } as any;
+    }
+    
+    if (!newNode) {
+      // Default: create a rectangle at drop position
+      const id = `drop_${Date.now().toString(36)}`;
+      newNode = {
+        id,
+        type: 'FRAME',
+        name: 'Rectangle',
+        x: wx,
+        y: wy,
+        width: 100,
+        height: 100,
+        fill: { type: 'SOLID', color: '#ffffff' },
+        stroke: { color: '#111827', weight: 1 },
+        children: [],
+      } as any;
+    }
+    
+    // Determine parent: hit-test frames under drop position
+    let parentId: string | null = null;
+    for (let i = drawableNodes.length - 1; i >= 0; i--) {
+      const n = drawableNodes[i];
+      if ((n.type || '').toUpperCase() === 'FRAME' && 
+          wx >= n.x && wx <= n.x + n.width && 
+          wy >= n.y && wy <= n.y + n.height) {
+        parentId = n.id;
+        break;
+      }
+    }
+    // Fallback to selectedFrame
+    if (!parentId && selectedFrame?.id) {
+      parentId = selectedFrame.id;
+    }
+    
+    if (parentId) {
+      // Adjust position relative to parent
+      const parentNode = drawableNodes.find(n => n.id === parentId);
+      if (parentNode) {
+        (newNode as any).x = wx - parentNode.x;
+        (newNode as any).y = wy - parentNode.y;
+      }
+      const nextRoots = updateNodePositionsForInsert(rawRoots, parentId, newNode!);
+      setRawRoots(nextRoots);
+    } else {
+      setRawRoots([...rawRoots, newNode!]);
+    }
+    
+    setSelectedIds(new Set([newNode!.id]));
+    requestRedraw();
+    console.log('[DROP] Added node:', newNode!.id, 'into', parentId || 'top-level');
+  }, [rawRoots, setRawRoots, setSelectedIds, drawableNodes, selectedFrame, offset, scale, requestRedraw]);
+
+  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  }, []);
+
   return (
     <>
       <AuthRedirect />
       <div 
-        className={styles.root} 
+        className={styles.root}
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
         style={{ 
           cursor: stateRef.current.isPanning
             ? "grabbing"
@@ -1252,6 +1646,7 @@ function updateNodePositionsForInsert(roots: NodeInput[], parentId: string, newC
   return roots.map(rec);
 }
 
+// Helper: update temporary preview node size/position by id (full update with absolute bounds)
 // Helper: update temporary preview node size/position by id
 function updateTempNode(roots: NodeInput[], id: string, x: number, y: number, w: number, h: number, tool: "rect" | "ellipse" | "text"): NodeInput[] {
   const rec = (node: NodeInput): NodeInput => {
@@ -1273,6 +1668,127 @@ function updateTempNode(roots: NodeInput[], id: string, x: number, y: number, w:
   };
   return roots.map(rec);
 }
+
+// Helper: update a node's rect by id (immutable)
+function updateNodeRect(
+  roots: NodeInput[],
+  id: string,
+  rect: { x?: number; y?: number; width?: number; height?: number }
+): NodeInput[] {
+  const rec = (node: NodeInput): NodeInput => {
+    if (node.id === id) {
+      const next: any = { ...node }
+      if (typeof rect.x === 'number') next.x = rect.x
+      if (typeof rect.y === 'number') next.y = rect.y
+      if (typeof rect.width === 'number') { next.width = rect.width; next.w = rect.width }
+      if (typeof rect.height === 'number') { next.height = rect.height; next.h = rect.height }
+      if (next.absoluteBoundingBox) {
+        next.absoluteBoundingBox = {
+          ...next.absoluteBoundingBox,
+          x: typeof rect.x === 'number' ? rect.x : (next.absoluteBoundingBox.x ?? next.x),
+          y: typeof rect.y === 'number' ? rect.y : (next.absoluteBoundingBox.y ?? next.y),
+          width: typeof rect.width === 'number' ? rect.width : (next.absoluteBoundingBox.width ?? next.width),
+          height: typeof rect.height === 'number' ? rect.height : (next.absoluteBoundingBox.height ?? next.height),
+        }
+      }
+      return next as NodeInput
+    }
+    if (node.children && node.children.length) {
+      const nextChildren = node.children.map(rec)
+      if (nextChildren.some((c, i) => c !== node.children![i])) {
+        return { ...node, children: nextChildren }
+      }
+    }
+    return node
+  }
+  return roots.map(rec)
+}
+
+// Helper: remove nodes (by id) from the tree
+function removeNodesByIds(roots: NodeInput[], ids: Set<string>): NodeInput[] {
+  const rec = (node: NodeInput | null): NodeInput | null => {
+    if (!node) return null
+    if (ids.has(node.id)) return null
+    if (node.children && node.children.length) {
+      const nextChildren = node.children.map(rec).filter(Boolean) as NodeInput[]
+      if (nextChildren.length !== node.children.length) {
+        return { ...node, children: nextChildren }
+      }
+    }
+    return node
+  }
+  return roots.map(rec).filter(Boolean) as NodeInput[]
+}
+
+// Helper: duplicate nodes by id; returns new tree and new ids
+function duplicateNodesByIds(roots: NodeInput[], ids: Set<string>): { next: NodeInput[]; newIds: string[] } {
+  const idMap = new Map<string, string>()
+  const genId = (base: string) => {
+    const stamp = Date.now().toString(36)
+    return `${base}_copy_${stamp}_${Math.floor(Math.random()*1e4)}`
+  }
+  const cloneNode = (node: NodeInput): NodeInput => {
+    const newId = genId(node.id)
+    idMap.set(node.id, newId)
+    const out: any = {
+      ...node,
+      id: newId,
+      x: (node as any).x + 16,
+      y: (node as any).y + 16,
+    }
+    if (node.children && node.children.length) {
+      out.children = node.children.map(cloneNode)
+    }
+    return out as NodeInput
+  }
+
+  const newSiblings: NodeInput[] = []
+  const rec = (node: NodeInput): NodeInput => {
+    let changed = false
+    let children = node.children
+    if (node.children && node.children.length) {
+      const nextChildren = node.children.map(rec)
+      if (nextChildren.some((c, i) => c !== node.children![i])) {
+        changed = true
+        children = nextChildren
+      }
+    }
+    // If this node is selected, duplicate it as a sibling copy appended after it
+    if (ids.has(node.id)) {
+      const copy = cloneNode(node)
+      newSiblings.push(copy)
+    }
+    return changed ? ({ ...node, children } as NodeInput) : node
+  }
+
+  const walked = roots.map(rec)
+  const next = [...walked, ...newSiblings]
+  return { next, newIds: Array.from(idMap.values()) }
+}
+
+// Helper: find a node by id in the tree
+function findNodeInTree(roots: NodeInput[], id: string): NodeInput | null {
+  for (const root of roots) {
+    if (root.id === id) return root;
+    if (root.children && root.children.length) {
+      const found = findNodeInTree(root.children, id);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+// Helper: clone a node with a new id (deep clone)
+function cloneNodeWithNewId(node: NodeInput): NodeInput {
+  const stamp = Date.now().toString(36);
+  const newId = `${node.id}_paste_${stamp}_${Math.floor(Math.random() * 1e4)}`;
+  const cloned: any = { ...node, id: newId };
+  if (node.children && node.children.length) {
+    cloned.children = node.children.map(cloneNodeWithNewId);
+  }
+  return cloned as NodeInput;
+}
+
 // Optimized image loading hook
 function useImageMap(map: ImageMap) {
   const [state, setState] = useState<Record<string, HTMLImageElement>>({});

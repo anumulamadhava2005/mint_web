@@ -1117,6 +1117,500 @@ export default function PropertiesPanel(props: {
             }}
           />
         </div>
+
+        {/* Layout & Positioning Section */}
+        <div className={styles.section}>
+          <div className={styles.label} style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: '#10b981' }}>
+            Layout & Positioning
+          </div>
+
+          {/* Auto Layout Flow */}
+          <div style={{ marginBottom: 12 }}>
+            <div className={styles.label} style={{ fontSize: 12, marginBottom: 6 }}>Auto Layout</div>
+            <select
+              className={styles.input}
+              value={(selectedNode as any).layoutMode || "NONE"}
+              onChange={(e) =>
+                onUpdateSelected((n) => {
+                  (n as any).layoutMode = e.target.value
+                })
+              }
+              style={{
+                backgroundColor: '#f8f9fa',
+                color: '#000000',
+                border: '1px solid #ddd',
+                borderRadius: '4px'
+              }}
+            >
+              <option value="NONE">None</option>
+              <option value="HORIZONTAL">Horizontal</option>
+              <option value="VERTICAL">Vertical</option>
+            </select>
+          </div>
+
+          {/* Gap (Item Spacing) */}
+          <div style={{ marginBottom: 12 }}>
+            <div className={styles.label} style={{ fontSize: 12, marginBottom: 6 }}>Gap (Item Spacing)</div>
+            <input
+              type="number"
+              min={0}
+              className={styles.input}
+              placeholder="8"
+              value={(selectedNode as any).itemSpacing ?? ""}
+              onChange={(e) =>
+                onUpdateSelected((n) => {
+                  (n as any).itemSpacing = Number(e.target.value) || 0
+                })
+              }
+              style={{
+                backgroundColor: '#f8f9fa',
+                color: '#000000',
+                border: '1px solid #ddd',
+                borderRadius: '4px'
+              }}
+            />
+          </div>
+
+          {/* Padding */}
+          <div style={{ marginBottom: 12 }}>
+            <div className={styles.label} style={{ fontSize: 12, marginBottom: 6 }}>Padding</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+              <input
+                type="number"
+                min={0}
+                className={styles.input}
+                placeholder="Top"
+                value={(selectedNode as any).paddingTop ?? ""}
+                onChange={(e) =>
+                  onUpdateSelected((n) => {
+                    (n as any).paddingTop = Number(e.target.value) || 0
+                  })
+                }
+                style={{
+                  backgroundColor: '#f8f9fa',
+                  color: '#000000',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  fontSize: 12
+                }}
+              />
+              <input
+                type="number"
+                min={0}
+                className={styles.input}
+                placeholder="Right"
+                value={(selectedNode as any).paddingRight ?? ""}
+                onChange={(e) =>
+                  onUpdateSelected((n) => {
+                    (n as any).paddingRight = Number(e.target.value) || 0
+                  })
+                }
+                style={{
+                  backgroundColor: '#f8f9fa',
+                  color: '#000000',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  fontSize: 12
+                }}
+              />
+              <input
+                type="number"
+                min={0}
+                className={styles.input}
+                placeholder="Bottom"
+                value={(selectedNode as any).paddingBottom ?? ""}
+                onChange={(e) =>
+                  onUpdateSelected((n) => {
+                    (n as any).paddingBottom = Number(e.target.value) || 0
+                  })
+                }
+                style={{
+                  backgroundColor: '#f8f9fa',
+                  color: '#000000',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  fontSize: 12
+                }}
+              />
+              <input
+                type="number"
+                min={0}
+                className={styles.input}
+                placeholder="Left"
+                value={(selectedNode as any).paddingLeft ?? ""}
+                onChange={(e) =>
+                  onUpdateSelected((n) => {
+                    (n as any).paddingLeft = Number(e.target.value) || 0
+                  })
+                }
+                style={{
+                  backgroundColor: '#f8f9fa',
+                  color: '#000000',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  fontSize: 12
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Justify Content */}
+          <div style={{ marginBottom: 12 }}>
+            <div className={styles.label} style={{ fontSize: 12, marginBottom: 6 }}>Justify Content</div>
+            <select
+              className={styles.input}
+              value={(selectedNode as any).justifyContent || "flex-start"}
+              onChange={(e) =>
+                onUpdateSelected((n) => {
+                  (n as any).justifyContent = e.target.value
+                })
+              }
+              style={{
+                backgroundColor: '#f8f9fa',
+                color: '#000000',
+                border: '1px solid #ddd',
+                borderRadius: '4px'
+              }}
+            >
+              <option value="flex-start">Start</option>
+              <option value="center">Center</option>
+              <option value="flex-end">End</option>
+              <option value="space-between">Space Between</option>
+              <option value="space-around">Space Around</option>
+              <option value="space-evenly">Space Evenly</option>
+            </select>
+          </div>
+
+          {/* Align Items */}
+          <div style={{ marginBottom: 12 }}>
+            <div className={styles.label} style={{ fontSize: 12, marginBottom: 6 }}>Align Items</div>
+            <select
+              className={styles.input}
+              value={(selectedNode as any).alignItems || "flex-start"}
+              onChange={(e) =>
+                onUpdateSelected((n) => {
+                  (n as any).alignItems = e.target.value
+                })
+              }
+              style={{
+                backgroundColor: '#f8f9fa',
+                color: '#000000',
+                border: '1px solid #ddd',
+                borderRadius: '4px'
+              }}
+            >
+              <option value="flex-start">Start</option>
+              <option value="center">Center</option>
+              <option value="flex-end">End</option>
+              <option value="stretch">Stretch</option>
+              <option value="baseline">Baseline</option>
+            </select>
+          </div>
+
+          {/* Alignment (Text/Content) */}
+          <div style={{ marginBottom: 12 }}>
+            <div className={styles.label} style={{ fontSize: 12, marginBottom: 6 }}>Content Alignment</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+              <button
+                type="button"
+                onClick={() =>
+                  onUpdateSelected((n) => {
+                    (n as any).textAlign = "left"
+                  })
+                }
+                style={{
+                  padding: '6px',
+                  background: (selectedNode as any).textAlign === "left" ? "#10b981" : "rgba(255,255,255,0.1)",
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 4,
+                  fontSize: 11,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                ← Left
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  onUpdateSelected((n) => {
+                    (n as any).textAlign = "center"
+                  })
+                }
+                style={{
+                  padding: '6px',
+                  background: (selectedNode as any).textAlign === "center" ? "#10b981" : "rgba(255,255,255,0.1)",
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 4,
+                  fontSize: 11,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                ↔ Center
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  onUpdateSelected((n) => {
+                    (n as any).textAlign = "right"
+                  })
+                }
+                style={{
+                  padding: '6px',
+                  background: (selectedNode as any).textAlign === "right" ? "#10b981" : "rgba(255,255,255,0.1)",
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 4,
+                  fontSize: 11,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                Right →
+              </button>
+            </div>
+          </div>
+
+          {/* Flow Direction */}
+          <div style={{ marginBottom: 12 }}>
+            <div className={styles.label} style={{ fontSize: 12, marginBottom: 6 }}>Flow Direction</div>
+            <select
+              className={styles.input}
+              value={(selectedNode as any).flexDirection || "row"}
+              onChange={(e) =>
+                onUpdateSelected((n) => {
+                  (n as any).flexDirection = e.target.value
+                })
+              }
+              style={{
+                backgroundColor: '#f8f9fa',
+                color: '#000000',
+                border: '1px solid #ddd',
+                borderRadius: '4px'
+              }}
+            >
+              <option value="row">Row (Horizontal)</option>
+              <option value="row-reverse">Row Reverse</option>
+              <option value="column">Column (Vertical)</option>
+              <option value="column-reverse">Column Reverse</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Appearance Section */}
+        <div className={styles.section}>
+          <div className={styles.label} style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: '#10b981' }}>
+            Appearance
+          </div>
+
+          {/* Background Color */}
+          <div style={{ marginBottom: 12 }}>
+            <div className={styles.label} style={{ fontSize: 12, marginBottom: 6 }}>Background Color</div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                type="color"
+                className={styles.input}
+                value={(selectedNode as any).backgroundColor || "#ffffff"}
+                onChange={(e) =>
+                  onUpdateSelected((n) => {
+                    (n as any).backgroundColor = e.target.value
+                  })
+                }
+                style={{ width: 60, height: 36 }}
+              />
+              <input
+                type="text"
+                className={styles.input}
+                placeholder="#ffffff"
+                value={(selectedNode as any).backgroundColor || ""}
+                onChange={(e) =>
+                  onUpdateSelected((n) => {
+                    (n as any).backgroundColor = e.target.value
+                  })
+                }
+                style={{
+                  flex: 1,
+                  backgroundColor: '#f8f9fa',
+                  color: '#000000',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px'
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Text Color */}
+          {selectedNode.text && (
+            <div style={{ marginBottom: 12 }}>
+              <div className={styles.label} style={{ fontSize: 12, marginBottom: 6 }}>Text Color</div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  type="color"
+                  className={styles.input}
+                  value={selectedNode.text.color || "#333333"}
+                  onChange={(e) =>
+                    onUpdateSelected((n) => {
+                      n.text = { ...(n.text || {}), color: e.target.value }
+                    })
+                  }
+                  style={{ width: 60, height: 36 }}
+                />
+                <input
+                  type="text"
+                  className={styles.input}
+                  placeholder="#333333"
+                  value={selectedNode.text.color || ""}
+                  onChange={(e) =>
+                    onUpdateSelected((n) => {
+                      n.text = { ...(n.text || {}), color: e.target.value }
+                    })
+                  }
+                  style={{
+                    flex: 1,
+                    backgroundColor: '#f8f9fa',
+                    color: '#000000',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px'
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Opacity */}
+          <div style={{ marginBottom: 12 }}>
+            <div className={styles.label} style={{ fontSize: 12, marginBottom: 6 }}>
+              Opacity: {Math.round(((selectedNode as any).opacity ?? 1) * 100)}%
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value={(selectedNode as any).opacity ?? 1}
+              onChange={(e) =>
+                onUpdateSelected((n) => {
+                  (n as any).opacity = Number(e.target.value)
+                })
+              }
+              style={{
+                width: '100%',
+                accentColor: '#10b981'
+              }}
+            />
+          </div>
+
+          {/* Rotation */}
+          <div style={{ marginBottom: 12 }}>
+            <div className={styles.label} style={{ fontSize: 12, marginBottom: 6 }}>
+              Rotation: {(selectedNode as any).rotation || 0}°
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                type="range"
+                min="-180"
+                max="180"
+                step="1"
+                value={(selectedNode as any).rotation || 0}
+                onChange={(e) =>
+                  onUpdateSelected((n) => {
+                    (n as any).rotation = Number(e.target.value)
+                  })
+                }
+                style={{
+                  flex: 1,
+                  accentColor: '#10b981'
+                }}
+              />
+              <input
+                type="number"
+                min="-180"
+                max="180"
+                className={styles.input}
+                value={(selectedNode as any).rotation || 0}
+                onChange={(e) =>
+                  onUpdateSelected((n) => {
+                    (n as any).rotation = Number(e.target.value) || 0
+                  })
+                }
+                style={{
+                  width: 70,
+                  backgroundColor: '#f8f9fa',
+                  color: '#000000',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  fontSize: 12,
+                  textAlign: 'center'
+                }}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
+              <button
+                type="button"
+                onClick={() =>
+                  onUpdateSelected((n) => {
+                    (n as any).rotation = 0
+                  })
+                }
+                style={{
+                  flex: 1,
+                  padding: '4px',
+                  background: 'rgba(255,255,255,0.1)',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 4,
+                  fontSize: 10,
+                  cursor: 'pointer'
+                }}
+              >
+                Reset
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  onUpdateSelected((n) => {
+                    (n as any).rotation = ((n as any).rotation || 0) + 90
+                  })
+                }
+                style={{
+                  flex: 1,
+                  padding: '4px',
+                  background: 'rgba(255,255,255,0.1)',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 4,
+                  fontSize: 10,
+                  cursor: 'pointer'
+                }}
+              >
+                +90°
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  onUpdateSelected((n) => {
+                    (n as any).rotation = ((n as any).rotation || 0) - 90
+                  })
+                }
+                style={{
+                  flex: 1,
+                  padding: '4px',
+                  background: 'rgba(255,255,255,0.1)',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 4,
+                  fontSize: 10,
+                  cursor: 'pointer'
+                }}
+              >
+                -90°
+              </button>
+            </div>
+          </div>
+        </div>
       </motion.aside>
 
       {/* Upload Modal */}

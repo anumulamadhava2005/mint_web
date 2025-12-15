@@ -6,12 +6,14 @@
         "id": "2128:179",
         "fill": {
           "type": "SOLID",
-          "color": "rgba(255, 255, 255, 1)"
+          "color": "#ffffff"
         },
         "name": "Desktop",
         "text": null,
         "type": "FRAME",
-        "stroke": null,
+        "stroke": {
+          "color": "#ffffff"
+        },
         "corners": {
           "topLeft": null,
           "uniform": null,
@@ -73,6 +75,8 @@
                     "effects": [],
                     "children": [
                       {
+                        "x": 17,
+                        "y": 14,
                         "id": "I2128:180;2251:636;1:2057",
                         "fill": {
                           "type": "SOLID",
@@ -80,6 +84,7 @@
                         },
                         "name": "Text",
                         "text": {
+                          "color": "#ffffff",
                           "fontSize": 14,
                           "textCase": null,
                           "fontStyle": "DMSans-Bold",
@@ -90,7 +95,9 @@
                           "textDecoration": null
                         },
                         "type": "TEXT",
-                        "stroke": null,
+                        "stroke": {
+                          "color": "#ffffff"
+                        },
                         "corners": {
                           "topLeft": null,
                           "uniform": null,
@@ -99,72 +106,19 @@
                           "bottomRight": null
                         },
                         "effects": [],
-                        "ax": 2240,
+                        "opacity": 1,
+                        "rotation": 0,
+                        "textAlign": "left",
+                        "alignItems": "center",
+                        "justifyContent": "center",
+                        "ax": 2235,
                         "ay": -4510,
                         "w": 93,
                         "h": 20,
                         "width": 93,
                         "height": 20,
                         "textRaw": "Learn More",
-                        "x": 22,
-                        "y": 14,
                         "children": []
-                      },
-                      {
-                        "id": "I2128:180;2251:636;10:527",
-                        "fill": null,
-                        "name": "Arrow",
-                        "text": null,
-                        "type": "FRAME",
-                        "stroke": null,
-                        "corners": {
-                          "topLeft": null,
-                          "uniform": null,
-                          "topRight": null,
-                          "bottomLeft": null,
-                          "bottomRight": null
-                        },
-                        "effects": [],
-                        "children": [
-                          {
-                            "id": "I2128:180;2251:636;1:2058",
-                            "fill": {
-                              "type": "SOLID",
-                              "color": "rgba(255, 255, 255, 1)"
-                            },
-                            "name": "↗",
-                            "text": null,
-                            "type": "VECTOR",
-                            "stroke": null,
-                            "corners": {
-                              "topLeft": null,
-                              "uniform": null,
-                              "topRight": null,
-                              "bottomLeft": null,
-                              "bottomRight": null
-                            },
-                            "effects": [],
-                            "ax": 2316,
-                            "ay": -4503.005859375,
-                            "w": 6,
-                            "h": 6,
-                            "width": 6,
-                            "height": 6,
-                            "textRaw": "",
-                            "x": 0,
-                            "y": 7,
-                            "children": []
-                          }
-                        ],
-                        "ax": 2316,
-                        "ay": -4510,
-                        "w": 7,
-                        "h": 20,
-                        "width": 7,
-                        "height": 20,
-                        "textRaw": "",
-                        "x": 98,
-                        "y": 14
                       }
                     ],
                     "ax": 2218,
@@ -223,7 +177,7 @@
                   "fontSize": 92,
                   "textCase": null,
                   "fontStyle": "CrimsonText-Regular",
-                  "characters": "NAGARAJU BUFFALLO FARMS",
+                  "characters": "",
                   "fontFamily": "Crimson Text",
                   "lineHeight": 112,
                   "letterSpacing": -7,
@@ -245,7 +199,7 @@
                 "h": 112,
                 "width": 1195,
                 "height": 112,
-                "textRaw": "NAGARAJU BUFFALLO FARMS",
+                "textRaw": "",
                 "x": 0,
                 "y": 0,
                 "children": []
@@ -308,7 +262,9 @@
                         "name": "Inner screen",
                         "text": null,
                         "type": "FRAME",
-                        "stroke": null,
+                        "stroke": {
+                          "color": "#ffffff"
+                        },
                         "corners": {
                           "topLeft": null,
                           "uniform": 16,
@@ -7528,401 +7484,139 @@
         "y": 0
       },
       {
-        "h": 400,
-        "w": 600,
-        "x": 2459.3236990416653,
-        "y": -4537.672877365781,
-        "id": "frame_mix5t65o",
-        "name": "idk",
+        "h": 7347,
+        "w": 1275,
+        "x": 4146.71208917117,
+        "y": -4556.046863773616,
+        "id": "frame_miyefgp9",
+        "name": "learn_more",
         "type": "FRAME",
-        "width": 600,
-        "height": 400,
+        "width": 1275,
+        "height": 7346.89990234375,
         "children": [],
-        "ax": 2459.3236990416653,
-        "ay": -4537.672877365781,
+        "backgroundColor": "#ff8080",
+        "ax": 4146.71208917117,
+        "ay": -4556.046863773616,
         "textRaw": ""
       },
       {
-        "h": 400,
-        "w": 600,
-        "x": -370.96198784480725,
-        "y": -4491.853270404895,
-        "id": "frame_mix9xn0m",
-        "name": "BUFFALLO",
+        "h": 7347,
+        "w": 1275,
+        "x": -527.0413823091558,
+        "y": -4535.835777588893,
+        "id": "frame_miyheqcs",
+        "name": "benefits",
         "type": "FRAME",
-        "width": 600,
-        "height": 400,
+        "width": 1275,
+        "height": 7346.89990234375,
+        "children": [],
+        "backgroundColor": "#ffffff",
+        "ax": -527.0413823091558,
+        "ay": -4535.835777588893,
+        "textRaw": ""
+      },
+      {
+        "h": 7347,
+        "w": 1275,
+        "x": 2491.588067706504,
+        "y": -4526.29926520584,
+        "id": "frame_miym01g1",
+        "name": "specifications",
+        "type": "FRAME",
+        "width": 1275,
+        "height": 7346.89990234375,
+        "children": [],
+        "backgroundColor": "#5c5757",
+        "ax": 2491.588067706504,
+        "ay": -4526.29926520584,
+        "textRaw": ""
+      },
+      {
+        "h": 7347,
+        "w": 1275,
+        "x": 5639.3382796123815,
+        "y": -4553.02752610585,
+        "id": "frame_mj1j3f8k",
+        "name": "how-to",
+        "type": "FRAME",
+        "width": 1275,
+        "height": 7346.89990234375,
         "children": [
           {
-            "x": -305.7294873904711,
-            "y": -4448.563209532779,
-            "id": "text_mix9xzc9",
-            "name": "Text",
-            "text": {
-              "color": "#111",
-              "fontSize": 20,
-              "characters": "Text"
-            },
+            "id": "text_mj5o1rq9",
             "type": "TEXT",
-            "width": 200,
-            "height": 40,
-            "children": [],
-            "ax": -305.7294873904711,
-            "ay": -4448.563209532779,
-            "w": 200,
-            "h": 40,
-            "textRaw": "Text"
-          },
-          {
-            "x": -287.77232827052865,
-            "y": -4438.017579852838,
-            "id": "text_mix9y00e",
             "name": "Text",
-            "text": {
-              "color": "#111",
-              "fontSize": 20,
-              "characters": "Text"
-            },
-            "type": "TEXT",
-            "width": 200,
-            "height": 40,
+            "x": 319,
+            "y": 432,
+            "width": 697.2379999670738,
+            "height": 336.9237538593361,
+            "w": 697,
+            "h": 337,
+            "fill": null,
+            "stroke": null,
             "children": [],
-            "ax": -287.77232827052865,
-            "ay": -4438.017579852838,
-            "w": 200,
-            "h": 40,
-            "textRaw": "Text"
-          },
-          {
-            "x": -287.77232827052865,
-            "y": -4438.017579852838,
-            "id": "text_mix9y061",
-            "name": "Text",
             "text": {
+              "characters": "HELLO IDIOT",
+              "fontSize": 200,
               "color": "#111",
-              "fontSize": 20,
-              "characters": "Text"
+              "lineHeight": 150
             },
-            "type": "TEXT",
-            "width": 200,
-            "height": 40,
-            "children": [],
-            "ax": -287.77232827052865,
-            "ay": -4438.017579852838,
-            "w": 200,
-            "h": 40,
-            "textRaw": "Text"
-          },
-          {
-            "x": -200.59780408979393,
-            "y": -4569.448701922204,
-            "id": "text_mix9y1ki",
-            "name": "Text",
-            "text": {
-              "color": "#111",
-              "fontSize": 20,
-              "characters": "Text"
-            },
-            "type": "TEXT",
-            "width": 200,
-            "height": 40,
-            "children": [],
-            "ax": -200.59780408979393,
-            "ay": -4569.448701922204,
-            "w": 200,
-            "h": 40,
-            "textRaw": "Text"
-          },
-          {
-            "x": -183.64895769599127,
-            "y": -4339.742997627078,
-            "id": "text_mix9y2h7",
-            "name": "Text",
-            "text": {
-              "color": "#111",
-              "fontSize": 20,
-              "characters": "Text"
-            },
-            "type": "TEXT",
-            "width": 200,
-            "height": 40,
-            "children": [],
-            "ax": -183.64895769599127,
-            "ay": -4339.742997627078,
-            "w": 200,
-            "h": 40,
-            "textRaw": "Text"
-          },
-          {
-            "x": -44.68565338178639,
-            "y": -4296.342460115625,
-            "id": "text_mix9y7zf",
-            "name": "Text",
-            "text": {
-              "color": "#111",
-              "fontSize": 20,
-              "characters": "Text"
-            },
-            "type": "TEXT",
-            "width": 200,
-            "height": 40,
-            "children": [],
-            "ax": -44.68565338178639,
-            "ay": -4296.342460115625,
-            "w": 200,
-            "h": 40,
-            "textRaw": "Text"
-          },
-          {
-            "x": -276.6607794821848,
-            "y": -4407.58147348973,
-            "id": "text_mix9ydbt",
-            "name": "Text",
-            "text": {
-              "color": "#111",
-              "fontSize": 20,
-              "characters": "Text"
-            },
-            "type": "TEXT",
-            "width": 200,
-            "height": 40,
-            "children": [],
-            "ax": -276.6607794821848,
-            "ay": -4407.58147348973,
-            "w": 200,
-            "h": 40,
-            "textRaw": "Text"
-          },
-          {
-            "x": -208.1673312504159,
-            "y": -4389.247992526129,
-            "id": "text_mix9ygzz",
-            "name": "Text",
-            "text": {
-              "color": "#111",
-              "fontSize": 20,
-              "characters": "Text"
-            },
-            "type": "TEXT",
-            "width": 200,
-            "height": 40,
-            "children": [],
-            "ax": -208.1673312504159,
-            "ay": -4389.247992526129,
-            "w": 200,
-            "h": 40,
-            "textRaw": "Text"
-          },
-          {
-            "x": -208.1673312504159,
-            "y": -4389.247992526129,
-            "id": "text_mix9yhgy",
-            "name": "Text",
-            "text": {
-              "color": "#111",
-              "fontSize": 20,
-              "characters": "Text"
-            },
-            "type": "TEXT",
-            "width": 200,
-            "height": 40,
-            "children": [],
-            "ax": -208.1673312504159,
-            "ay": -4389.247992526129,
-            "w": 200,
-            "h": 40,
-            "textRaw": "Text"
-          },
-          {
-            "x": -208.1673312504159,
-            "y": -4389.247992526129,
-            "id": "text_mix9yhlv",
-            "name": "Text",
-            "text": {
-              "color": "#111",
-              "fontSize": 20,
-              "characters": "Text"
-            },
-            "type": "TEXT",
-            "width": 200,
-            "height": 40,
-            "children": [],
-            "ax": -208.1673312504159,
-            "ay": -4389.247992526129,
-            "w": 200,
-            "h": 40,
-            "textRaw": "Text"
-          },
-          {
-            "x": -133.52058997194789,
-            "y": -4639.559472275958,
-            "id": "text_mix9yhy7",
-            "name": "Text",
-            "text": {
-              "color": "#111",
-              "fontSize": 20,
-              "characters": "Text"
-            },
-            "type": "TEXT",
-            "width": 200,
-            "height": 40,
-            "children": [],
-            "ax": -133.52058997194789,
-            "ay": -4639.559472275958,
-            "w": 200,
-            "h": 40,
-            "textRaw": "Text"
-          },
-          {
-            "x": -120.84055472071994,
-            "y": -4580.755593346951,
-            "id": "text_mix9yicr",
-            "name": "Text",
-            "text": {
-              "color": "#111",
-              "fontSize": 20,
-              "characters": "Text"
-            },
-            "type": "TEXT",
-            "width": 200,
-            "height": 40,
-            "children": [],
-            "ax": -120.84055472071994,
-            "ay": -4580.755593346951,
-            "w": 200,
-            "h": 40,
-            "textRaw": "Text"
-          },
-          {
-            "x": -120.84055472071994,
-            "y": -4580.755593346951,
-            "id": "text_mix9yiis",
-            "name": "Text",
-            "text": {
-              "color": "#111",
-              "fontSize": 20,
-              "characters": "Text"
-            },
-            "type": "TEXT",
-            "width": 200,
-            "height": 40,
-            "children": [],
-            "ax": -120.84055472071994,
-            "ay": -4580.755593346951,
-            "w": 200,
-            "h": 40,
-            "textRaw": "Text"
-          },
-          {
-            "x": -120.84055472071994,
-            "y": -4580.755593346951,
-            "id": "text_mix9yiq6",
-            "name": "Text",
-            "text": {
-              "color": "#111",
-              "fontSize": 20,
-              "characters": "Text"
-            },
-            "type": "TEXT",
-            "width": 200,
-            "height": 40,
-            "children": [],
-            "ax": -120.84055472071994,
-            "ay": -4580.755593346951,
-            "w": 200,
-            "h": 40,
-            "textRaw": "Text"
-          },
-          {
-            "x": -165.82106943837448,
-            "y": -4397.598890232363,
-            "id": "text_mix9ymg7",
-            "name": "Text",
-            "text": {
-              "color": "#111",
-              "fontSize": 20,
-              "characters": "Text"
-            },
-            "type": "TEXT",
-            "width": 200,
-            "height": 40,
-            "children": [],
-            "ax": -165.82106943837448,
-            "ay": -4397.598890232363,
-            "w": 200,
-            "h": 40,
-            "textRaw": "Text"
-          },
-          {
-            "x": 1351.8102362068378,
-            "y": -4495.971143776325,
-            "id": "text_mix9yp1f",
-            "name": "Text",
-            "text": {
-              "color": "#111",
-              "fontSize": 20,
-              "characters": "Text"
-            },
-            "type": "TEXT",
-            "width": 200,
-            "height": 40,
-            "children": [],
-            "ax": 1351.8102362068378,
-            "ay": -4495.971143776325,
-            "w": 200,
-            "h": 40,
-            "textRaw": "Text"
-          },
-          {
-            "x": 1344.108565498061,
-            "y": -4497.539630239209,
-            "id": "text_mix9yqy0",
-            "name": "Text",
-            "text": {
-              "color": "#111",
-              "fontSize": 20,
-              "characters": "Text"
-            },
-            "type": "TEXT",
-            "width": 200,
-            "height": 40,
-            "children": [],
-            "ax": 1344.108565498061,
-            "ay": -4497.539630239209,
-            "w": 200,
-            "h": 40,
-            "textRaw": "Text"
-          },
-          {
-            "x": 1344.108565498061,
-            "y": -4497.539630239209,
-            "id": "text_mix9yrbr",
-            "name": "Text",
-            "text": {
-              "color": "#111",
-              "fontSize": 20,
-              "characters": "Text"
-            },
-            "type": "TEXT",
-            "width": 200,
-            "height": 40,
-            "children": [],
-            "ax": 1344.108565498061,
-            "ay": -4497.539630239209,
-            "w": 200,
-            "h": 40,
-            "textRaw": "Text"
+            "textRaw": "Text",
+            "ax": 5958.023442442988,
+            "ay": -4120.565966548639
           }
         ],
-        "ax": -370.96198784480725,
-        "ay": -4491.853270404895,
+        "backgroundColor": "#d1bdff",
+        "ax": 5639.3382796123815,
+        "ay": -4553.02752610585,
         "textRaw": ""
       }
     ],
     "manifest": {},
     "refW": 1920,
     "refH": 1080,
-    "interactions": [],
+    "interactions": [
+      {
+        "id": "it_mj5awkqe",
+        "sourceId": "2128:331",
+        "targetId": "frame_miyheqcs",
+        "type": "navigation",
+        "trigger": "onClick",
+        "animation": {
+          "name": "none"
+        }
+      },
+      {
+        "id": "it_mj5awsuk",
+        "sourceId": "2128:332",
+        "targetId": "frame_miym01g1",
+        "type": "navigation",
+        "trigger": "onClick",
+        "animation": {
+          "name": "none"
+        }
+      },
+      {
+        "id": "it_mj5ax1qw",
+        "sourceId": "2128:333",
+        "targetId": "frame_mj1j3f8k",
+        "type": "navigation",
+        "trigger": "onClick",
+        "animation": {
+          "name": "none"
+        }
+      },
+      {
+        "id": "it_mj5azws9",
+        "sourceId": "I2128:180;2251:636;1:2057",
+        "targetId": "frame_miyefgp9",
+        "type": "navigation",
+        "trigger": "onClick",
+        "animation": {
+          "name": "none"
+        }
+      }
+    ],
     "focusFrameId": null
   }
 }

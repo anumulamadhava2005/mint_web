@@ -65,6 +65,12 @@ export default function FrameDock({
       label: 'Text',
       onClick: () => onChooseTool?.('text'),
     },
+    // Always show prototyping button so users can add connections
+    {
+      icon: <Share color="#000" size={24} />,
+      label: 'Connect',
+      onClick: onAddConnection,
+    },
   ];
 
   if (selectedFrame) {
@@ -73,11 +79,6 @@ export default function FrameDock({
         icon: <Edit color="#000" size={24} />,
         label: `Rename "${selectedFrame?.name || 'Frame'}"`,
         onClick: () => setIsRenaming(true),
-      },
-      {
-        icon: <Share color="#000" size={24} />,
-        label: 'Connect',
-        onClick: onAddConnection,
       }
     );
   }

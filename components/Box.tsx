@@ -18,7 +18,7 @@ export function Box({
   children?: React.ReactNode;
   onClick?: React.MouseEventHandler<HTMLDivElement>;
 }) {
-  // Respect any padding already computed into style; default to 4 only if none provided
+  // Respect any padding already computed into style; default to 0 for precise Figma matching
   const hasPad =
     style.padding != null ||
     style.paddingLeft != null ||
@@ -29,12 +29,12 @@ export function Box({
   const innerStyle: React.CSSProperties = {
     width: "100%",
     height: "100%",
-    display: isText ? "inline-flex" : "flex",
+    display: isText ? "block" : "flex",
     alignItems: "center",
     justifyContent: isText ? "flex-start" : "center",
-    overflow: "visible",
+    overflow: "hidden", // Match Figma's default clipping behavior
     textAlign: isText ? "left" : "center",
-    ...(hasPad ? {} : { padding: 4 }),
+    ...(hasPad ? {} : {}), // No default padding for pixel-perfect matching
   };
 
   // Derive paragraph spacing if the caller provided it via style.paragraphSpacing
@@ -47,6 +47,16 @@ export function Box({
     ...(paraGap ? { marginBottom: paraGap } : {}),
     // Keep text from expanding container when explicit width is set
     maxWidth: "100%",
+    // Preserve whitespace and text wrapping as in Figma
+    whiteSpace: "pre-wrap",
+    wordWrap: "break-word",
+    // Inherit all text styling from parent
+    fontSize: "inherit",
+    lineHeight: "inherit",
+    letterSpacing: "inherit",
+    fontFamily: "inherit",
+    fontWeight: "inherit",
+    color: "inherit",
   };
 
   return (

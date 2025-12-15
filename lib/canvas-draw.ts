@@ -1,6 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { DrawableNode, NodeInput, ReferenceFrame } from "./figma-types";
 
+/**
+ * Canvas 2D Drawing Module
+ * 
+ * Note: This module supports visual properties (backgroundColor, opacity, rotation)
+ * but does NOT support flexbox layout properties (padding, gap, justifyContent, alignItems)
+ * as Canvas 2D API doesn't have built-in flexbox support. For full layout property support,
+ * use the DOM renderers (RenderTree.tsx or CanvasRenderer.tsx).
+ */
+
 // Grid
 export function drawGrid(
   ctx: CanvasRenderingContext2D,
@@ -161,25 +170,87 @@ export function drawNodes(
     const rawNode = findRaw(n.id);
     const isTextNode = (n.type || "").toUpperCase() === "TEXT";
 
+    // Save context for transformations
+    ctx.save();
+
+    // Apply rotation if present
+    if (rawNode?.rotation != null && rawNode.rotation !== 0) {
+      const centerX = x + w / 2;
+      const centerY = y + h / 2;
+      ctx.translate(centerX, centerY);
+      ctx.rotate((rawNode.rotation * Math.PI) / 180);
+      ctx.translate(-centerX, -centerY);
+    }
+
+    // Apply node-level opacity
+    if (rawNode?.opacity != null && rawNode.opacity < 1) {
+      ctx.globalAlpha = rawNode.opacity;
+    }
+
+    // Apply blend mode
+    if (rawNode?.blendMode && rawNode.blendMode !== "PASS_THROUGH" && rawNode.blendMode !== "NORMAL") {
+      const blendModeMap: Record<string, GlobalCompositeOperation> = {
+        MULTIPLY: "multiply",
+        SCREEN: "screen",
+        OVERLAY: "overlay",
+        DARKEN: "darken",
+        LIGHTEN: "lighten",
+        COLOR_DODGE: "color-dodge",
+        COLOR_BURN: "color-burn",
+        HARD_LIGHT: "hard-light",
+        SOFT_LIGHT: "soft-light",
+        DIFFERENCE: "difference",
+        EXCLUSION: "exclusion",
+        HUE: "hue",
+        SATURATION: "saturation",
+        COLOR: "color",
+        LUMINOSITY: "luminosity",
+      };
+      const compositeOp = blendModeMap[rawNode.blendMode];
+      if (compositeOp) {
+        ctx.globalCompositeOperation = compositeOp;
+      }
+    }
+
   const isEllipse = (n.type || '').toUpperCase() === 'ELLIPSE';
   // --- Fill/Background ---
   if (!isTextNode) {
-      if (rawNode?.fill) {
+      // Check for backgroundColor property first
+      if ((rawNode as any)?.backgroundColor) {
+        ctx.fillStyle = (rawNode as any).backgroundColor;
+      } else if (rawNode?.fill) {
         if (rawNode.fill.type === "SOLID" && rawNode.fill.color) {
           ctx.fillStyle = rawNode.fill.color;
+          // Apply opacity if specified
+          if (rawNode.fill.opacity != null && rawNode.fill.opacity < 1) {
+            ctx.globalAlpha = rawNode.fill.opacity;
+          }
         } else if (rawNode.fill.type && rawNode.fill.type.startsWith("GRADIENT") && rawNode.fill.stops?.length) {
-          // Use vertical gradient as default
-          const gradient = ctx.createLinearGradient(x, y, x, y + h);
+          // Support both linear and radial gradients
+          let gradient;
+          if (rawNode.fill.type.toUpperCase().includes("RADIAL")) {
+            const centerX = x + w / 2;
+            const centerY = y + h / 2;
+            const radius = Math.max(w, h) / 2;
+            gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+          } else {
+            // Use vertical gradient as default
+            gradient = ctx.createLinearGradient(x, y, x, y + h);
+          }
           rawNode.fill.stops.forEach((stop: any) => gradient.addColorStop(stop.position, stop.color));
           ctx.fillStyle = gradient;
+          // Apply gradient opacity
+          if (rawNode.fill.opacity != null && rawNode.fill.opacity < 1) {
+            ctx.globalAlpha = rawNode.fill.opacity;
+          }
         } else if (rawNode.fill.type === "IMAGE" && rawNode.fill.imageRef) {
-          // Optionally, you can draw an image here if you have it loaded
-          ctx.fillStyle = "#fff";
+          // Will be handled in image rendering section
+          ctx.fillStyle = "transparent";
         } else {
-          ctx.fillStyle = "#fff";
+          ctx.fillStyle = "transparent";
         }
       } else {
-        ctx.fillStyle = "#fff";
+        ctx.fillStyle = "transparent";
       }
     }
 
@@ -231,6 +302,30 @@ export function drawNodes(
         rawNode?.corners?.bottomLeft ??
         0;
 
+      // Apply clipping if clipsContent is true
+      if (rawNode?.clipsContent) {
+        ctx.save();
+        ctx.beginPath();
+        if (isEllipse) {
+          ctx.ellipse(x + w / 2, y + h / 2, Math.max(0.5, w / 2), Math.max(0.5, h / 2), 0, 0, Math.PI * 2);
+        } else if (radius && radius > 0) {
+          if ((ctx as any).roundRect) {
+            (ctx as any).roundRect(x, y, w, h, radius * scale);
+          } else {
+            const r = Math.min(radius * scale, Math.min(w, h) / 2);
+            ctx.moveTo(x + r, y);
+            ctx.arcTo(x + w, y, x + w, y + h, r);
+            ctx.arcTo(x + w, y + h, x, y + h, r);
+            ctx.arcTo(x, y + h, x, y, r);
+            ctx.arcTo(x, y, x + w, y, r);
+            ctx.closePath();
+          }
+        } else {
+          ctx.rect(x, y, w, h);
+        }
+        ctx.clip();
+      }
+
       if (isEllipse) {
         ctx.beginPath();
         ctx.ellipse(x + w / 2, y + h / 2, Math.max(0.5, w / 2), Math.max(0.5, h / 2), 0, 0, Math.PI * 2);
@@ -272,6 +367,16 @@ export function drawNodes(
     ctx.shadowOffsetY = 0;
     ctx.shadowBlur = 0;
     ctx.setLineDash([]);
+    ctx.globalAlpha = 1; // Reset opacity
+    ctx.globalCompositeOperation = "source-over"; // Reset blend mode
+
+    // Restore clipping context if it was applied
+    if (rawNode?.clipsContent) {
+      ctx.restore();
+    }
+
+    // Restore context (rotation, etc.)
+    ctx.restore();
 
     // --- Image rendering ---
     if (images && (rawNode as any)?.fill?.imageRef && typeof (rawNode as any).fill.imageRef === 'string' && (rawNode as any).fill.imageRef.length > 0) {
@@ -334,19 +439,70 @@ export function drawNodes(
     if (isTextNode && rawNode?.text) {
       const t: any = rawNode.text;
       const fam = t.fontFamily || "system-ui";
-      const basePx = t.fontSize || 20; // size at 100% zoom
-      const scaledPx = basePx * scale; // proportional with zoom
+      const basePx = t.fontSize || 20;
+      const scaledPx = basePx * scale;
+      
+      // Apply text styling
       ctx.fillStyle = t.color || "#333";
-      ctx.font = `${scaledPx}px ${fam}`;
+      
+      // Font style with weight and style
+      const fontStyle = t.fontStyle || "";
+      const isBold = fontStyle.toLowerCase().includes("bold");
+      const isItalic = fontStyle.toLowerCase().includes("italic");
+      
+      const weight = isBold ? "bold" : "normal";
+      const style = isItalic ? "italic" : "normal";
+      ctx.font = `${style} ${weight} ${scaledPx}px ${fam}`;
+      
+      // Text alignment
+      const textAlignH = t.textAlignHorizontal || "LEFT";
+      if (textAlignH === "CENTER") {
+        ctx.textAlign = "center";
+      } else if (textAlignH === "RIGHT") {
+        ctx.textAlign = "right";
+      } else {
+        ctx.textAlign = "left";
+      }
+      
       ctx.textBaseline = "top";
-      ctx.textAlign = "left";
-      const chars = (t.characters || "").replace(/\s+/g, " ").trim();
+      
+      const chars = (t.characters || "").replace(/\\s+/g, " ").trim();
       if (chars) {
         const paddingX = 0;
-        const startX = x + paddingX;
-        const startY = y;
+        let startX = x + paddingX;
+        let startY = y;
         const maxW = Math.max(0, w - paddingX * 2);
-        const lineH = Math.ceil(scaledPx * 1.3);
+        
+        // Adjust X position based on alignment
+        if (textAlignH === "CENTER") {
+          startX = x + w / 2;
+        } else if (textAlignH === "RIGHT") {
+          startX = x + w - paddingX;
+        }
+        
+        // Apply vertical alignment
+        const textAlignV = t.textAlignVertical || "TOP";
+        const lineHeight = t.lineHeight || scaledPx * 1.2;
+        const lineH = typeof lineHeight === 'number' 
+          ? (lineHeight > 3 ? lineHeight * scale : scaledPx * lineHeight)
+          : Math.ceil(scaledPx * 1.2);
+        
+        // Calculate text height for vertical alignment
+        const lines = chars.split("\\n");
+        const textHeight = lines.length * lineH;
+        
+        if (textAlignV === "CENTER") {
+          startY = y + (h - textHeight) / 2;
+        } else if (textAlignV === "BOTTOM") {
+          startY = y + h - textHeight;
+        }
+        
+        // Apply paragraph indent if present
+        const indent = t.paragraphIndent ? t.paragraphIndent * scale : 0;
+        if (indent > 0) {
+          startX += indent;
+        }
+        
         wrapAndDrawText(ctx, chars, startX, startY, maxW, lineH);
       }
     }

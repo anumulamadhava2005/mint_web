@@ -38,6 +38,10 @@ export type TextStyle = {
   textCase?: string | null;
   characters?: string | null;
   color?: string | null;
+  textAlignHorizontal?: "LEFT" | "CENTER" | "RIGHT" | "JUSTIFIED" | null;
+  textAlignVertical?: "TOP" | "CENTER" | "BOTTOM" | null;
+  paragraphSpacing?: number | null;
+  paragraphIndent?: number | null;
 } | null;
 
 export type NodeInput = {
@@ -57,6 +61,13 @@ export type NodeInput = {
   corners?: Corners;
   effects?: Array<Exclude<EffectStyle, null>> | null;
   text?: TextStyle;
+  // High priority visual features
+  opacity?: number | null;
+  blendMode?: string | null;
+  rotation?: number | null;
+  clipsContent?: boolean | null;
+  fills?: FillStyle[] | null;
+  strokes?: StrokeStyle[] | null;
 };
 
 export type DrawableNode = {
@@ -74,6 +85,13 @@ export type DrawableNode = {
   corners?: Corners;
   effects?: Array<Exclude<EffectStyle, null>> | null;
   text?: TextStyle;
+  // High priority visual features
+  opacity?: number | null;
+  blendMode?: string | null;
+  rotation?: number | null;
+  clipsContent?: boolean | null;
+  fills?: FillStyle[] | null;
+  strokes?: StrokeStyle[] | null;
 };
 
 export type ReferenceFrame = {

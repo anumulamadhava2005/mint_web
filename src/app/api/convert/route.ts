@@ -45,6 +45,7 @@ export async function POST(req: NextRequest) {
     const fileName = toProjectName(body.fileName || "figma-project");
     const nodes = Array.isArray(body.nodes) ? body.nodes : [];
     const ref = body.referenceFrame ?? null;
+    const fileKey = (body as any).fileKey || null;
 
     // NEW: get interactions from payload (if any)
     const incomingInteractions: Interaction[] = Array.isArray((body as any).interactions)
@@ -105,9 +106,15 @@ export async function POST(req: NextRequest) {
   const { imageManifest, imageBlobs, skipped } = await collectAndDownloadImages(flatForAssets, origin);
 
     const zip = new JSZip();
+    // Prepare liveOrigin for .env.local (where the exported app will connect back)
+    const liveOrigin = origin || "http://localhost:3000";
     switch (target) {
       case "nextjs":
-        buildNext(zip, fileName, roots, ref, imageManifest, imageBlobs, { interactions: uniqueInteractions });
+        buildNext(zip, fileName, roots, ref, imageManifest, imageBlobs, { 
+          interactions: uniqueInteractions,
+          liveOrigin,
+          fileKey: fileKey || undefined,
+        });
         break;
       case "react":
         buildReactVite(zip, fileName, roots, ref, imageManifest, imageBlobs);

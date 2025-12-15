@@ -3,6 +3,10 @@ import { NextRequest, NextResponse } from 'next/server';
 const MINTIT_API_BASE = 'https://api.mintit.pro';
 const USER_ID = '9198e3fb-4c22-11f0-906d-080027fda028';
 
+// Configure route for larger payloads
+export const maxDuration = 60; // seconds
+export const dynamic = 'force-dynamic';
+
 // Helper function to forward requests to mintit.pro with authentication
 async function proxyToMintit(
   method: string,

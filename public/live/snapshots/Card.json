@@ -54,44 +54,6 @@
                 "effects": [],
                 "children": [
                   {
-                    "id": "I2128:180;2251:635",
-                    "fill": {
-                      "type": "SOLID",
-                      "color": "rgba(0, 0, 0, 1)"
-                    },
-                    "name": "Area",
-                    "text": {
-                      "fontSize": 30,
-                      "textCase": null,
-                      "fontStyle": "DMSans-Medium",
-                      "characters": "Area",
-                      "fontFamily": "DM Sans",
-                      "lineHeight": 36,
-                      "letterSpacing": -1.5,
-                      "textDecoration": "UNDERLINE"
-                    },
-                    "type": "TEXT",
-                    "stroke": null,
-                    "corners": {
-                      "topLeft": null,
-                      "uniform": null,
-                      "topRight": null,
-                      "bottomLeft": null,
-                      "bottomRight": null
-                    },
-                    "effects": [],
-                    "ax": 1150,
-                    "ay": -4518,
-                    "w": 79,
-                    "h": 36,
-                    "width": 79,
-                    "height": 36,
-                    "textRaw": "Area",
-                    "x": 0,
-                    "y": 26,
-                    "children": []
-                  },
-                  {
                     "id": "I2128:180;2251:636",
                     "fill": {
                       "type": "SOLID",
@@ -125,8 +87,7 @@
                           "fontFamily": "DM Sans",
                           "lineHeight": 19.600000381469727,
                           "letterSpacing": -0.35000000000000003,
-                          "textDecoration": null,
-                          "color": "#ffffff"
+                          "textDecoration": null
                         },
                         "type": "TEXT",
                         "stroke": null,
@@ -140,14 +101,70 @@
                         "effects": [],
                         "ax": 2240,
                         "ay": -4510,
-                        "w": 83,
+                        "w": 93,
                         "h": 20,
-                        "width": 83,
+                        "width": 93,
                         "height": 20,
                         "textRaw": "Learn More",
                         "x": 22,
                         "y": 14,
                         "children": []
+                      },
+                      {
+                        "id": "I2128:180;2251:636;10:527",
+                        "fill": null,
+                        "name": "Arrow",
+                        "text": null,
+                        "type": "FRAME",
+                        "stroke": null,
+                        "corners": {
+                          "topLeft": null,
+                          "uniform": null,
+                          "topRight": null,
+                          "bottomLeft": null,
+                          "bottomRight": null
+                        },
+                        "effects": [],
+                        "children": [
+                          {
+                            "id": "I2128:180;2251:636;1:2058",
+                            "fill": {
+                              "type": "SOLID",
+                              "color": "rgba(255, 255, 255, 1)"
+                            },
+                            "name": "↗",
+                            "text": null,
+                            "type": "VECTOR",
+                            "stroke": null,
+                            "corners": {
+                              "topLeft": null,
+                              "uniform": null,
+                              "topRight": null,
+                              "bottomLeft": null,
+                              "bottomRight": null
+                            },
+                            "effects": [],
+                            "ax": 2316,
+                            "ay": -4503.005859375,
+                            "w": 6,
+                            "h": 6,
+                            "width": 6,
+                            "height": 6,
+                            "textRaw": "",
+                            "x": 0,
+                            "y": 7,
+                            "children": []
+                          }
+                        ],
+                        "ax": 2316,
+                        "ay": -4510,
+                        "w": 7,
+                        "h": 20,
+                        "width": 7,
+                        "height": 20,
+                        "textRaw": "",
+                        "x": 98,
+                        "y": 14
                       }
                     ],
                     "ax": 2218,
@@ -200,16 +217,13 @@
             "children": [
               {
                 "id": "2128:182",
-                "fill": {
-                  "type": "SOLID",
-                  "color": "rgba(0, 0, 0, 1)"
-                },
+                "fill": null,
                 "name": "Browse everything.",
                 "text": {
-                  "fontSize": 140,
+                  "fontSize": 92,
                   "textCase": null,
                   "fontStyle": "CrimsonText-Regular",
-                  "characters": "Browse everything.",
+                  "characters": "NAGARAJU BUFFALLO FARMS",
                   "fontFamily": "Crimson Text",
                   "lineHeight": 112,
                   "letterSpacing": -7,
@@ -231,7 +245,7 @@
                 "h": 112,
                 "width": 1195,
                 "height": 112,
-                "textRaw": "Browse everything.",
+                "textRaw": "NAGARAJU BUFFALLO FARMS",
                 "x": 0,
                 "y": 0,
                 "children": []
@@ -7335,7 +7349,7 @@
             "effects": [
               {
                 "type": "DROP_SHADOW",
-                "boxShadow": "0)"
+                "boxShadow": ""
               }
             ],
             "children": [
@@ -7368,9 +7382,9 @@
                 "effects": [],
                 "ax": 1572.5,
                 "ay": -4508,
-                "w": 71,
+                "w": 68,
                 "h": 20,
-                "width": 71,
+                "width": 68,
                 "height": 20,
                 "textRaw": "Benefits",
                 "x": 24,
@@ -7444,9 +7458,9 @@
                 "effects": [],
                 "ax": 1773.5,
                 "ay": -4508,
-                "w": 62,
+                "w": 61,
                 "h": 20,
-                "width": 62,
+                "width": 61,
                 "height": 20,
                 "textRaw": "How-to",
                 "x": 225,
@@ -7512,11 +7526,402 @@
         "textRaw": "",
         "x": 0,
         "y": 0
+      },
+      {
+        "h": 400,
+        "w": 600,
+        "x": 2459.3236990416653,
+        "y": -4537.672877365781,
+        "id": "frame_mix5t65o",
+        "name": "idk",
+        "type": "FRAME",
+        "width": 600,
+        "height": 400,
+        "children": [],
+        "ax": 2459.3236990416653,
+        "ay": -4537.672877365781,
+        "textRaw": ""
+      },
+      {
+        "h": 400,
+        "w": 600,
+        "x": -370.96198784480725,
+        "y": -4491.853270404895,
+        "id": "frame_mix9xn0m",
+        "name": "BUFFALLO",
+        "type": "FRAME",
+        "width": 600,
+        "height": 400,
+        "children": [
+          {
+            "x": -305.7294873904711,
+            "y": -4448.563209532779,
+            "id": "text_mix9xzc9",
+            "name": "Text",
+            "text": {
+              "color": "#111",
+              "fontSize": 20,
+              "characters": "Text"
+            },
+            "type": "TEXT",
+            "width": 200,
+            "height": 40,
+            "children": [],
+            "ax": -305.7294873904711,
+            "ay": -4448.563209532779,
+            "w": 200,
+            "h": 40,
+            "textRaw": "Text"
+          },
+          {
+            "x": -287.77232827052865,
+            "y": -4438.017579852838,
+            "id": "text_mix9y00e",
+            "name": "Text",
+            "text": {
+              "color": "#111",
+              "fontSize": 20,
+              "characters": "Text"
+            },
+            "type": "TEXT",
+            "width": 200,
+            "height": 40,
+            "children": [],
+            "ax": -287.77232827052865,
+            "ay": -4438.017579852838,
+            "w": 200,
+            "h": 40,
+            "textRaw": "Text"
+          },
+          {
+            "x": -287.77232827052865,
+            "y": -4438.017579852838,
+            "id": "text_mix9y061",
+            "name": "Text",
+            "text": {
+              "color": "#111",
+              "fontSize": 20,
+              "characters": "Text"
+            },
+            "type": "TEXT",
+            "width": 200,
+            "height": 40,
+            "children": [],
+            "ax": -287.77232827052865,
+            "ay": -4438.017579852838,
+            "w": 200,
+            "h": 40,
+            "textRaw": "Text"
+          },
+          {
+            "x": -200.59780408979393,
+            "y": -4569.448701922204,
+            "id": "text_mix9y1ki",
+            "name": "Text",
+            "text": {
+              "color": "#111",
+              "fontSize": 20,
+              "characters": "Text"
+            },
+            "type": "TEXT",
+            "width": 200,
+            "height": 40,
+            "children": [],
+            "ax": -200.59780408979393,
+            "ay": -4569.448701922204,
+            "w": 200,
+            "h": 40,
+            "textRaw": "Text"
+          },
+          {
+            "x": -183.64895769599127,
+            "y": -4339.742997627078,
+            "id": "text_mix9y2h7",
+            "name": "Text",
+            "text": {
+              "color": "#111",
+              "fontSize": 20,
+              "characters": "Text"
+            },
+            "type": "TEXT",
+            "width": 200,
+            "height": 40,
+            "children": [],
+            "ax": -183.64895769599127,
+            "ay": -4339.742997627078,
+            "w": 200,
+            "h": 40,
+            "textRaw": "Text"
+          },
+          {
+            "x": -44.68565338178639,
+            "y": -4296.342460115625,
+            "id": "text_mix9y7zf",
+            "name": "Text",
+            "text": {
+              "color": "#111",
+              "fontSize": 20,
+              "characters": "Text"
+            },
+            "type": "TEXT",
+            "width": 200,
+            "height": 40,
+            "children": [],
+            "ax": -44.68565338178639,
+            "ay": -4296.342460115625,
+            "w": 200,
+            "h": 40,
+            "textRaw": "Text"
+          },
+          {
+            "x": -276.6607794821848,
+            "y": -4407.58147348973,
+            "id": "text_mix9ydbt",
+            "name": "Text",
+            "text": {
+              "color": "#111",
+              "fontSize": 20,
+              "characters": "Text"
+            },
+            "type": "TEXT",
+            "width": 200,
+            "height": 40,
+            "children": [],
+            "ax": -276.6607794821848,
+            "ay": -4407.58147348973,
+            "w": 200,
+            "h": 40,
+            "textRaw": "Text"
+          },
+          {
+            "x": -208.1673312504159,
+            "y": -4389.247992526129,
+            "id": "text_mix9ygzz",
+            "name": "Text",
+            "text": {
+              "color": "#111",
+              "fontSize": 20,
+              "characters": "Text"
+            },
+            "type": "TEXT",
+            "width": 200,
+            "height": 40,
+            "children": [],
+            "ax": -208.1673312504159,
+            "ay": -4389.247992526129,
+            "w": 200,
+            "h": 40,
+            "textRaw": "Text"
+          },
+          {
+            "x": -208.1673312504159,
+            "y": -4389.247992526129,
+            "id": "text_mix9yhgy",
+            "name": "Text",
+            "text": {
+              "color": "#111",
+              "fontSize": 20,
+              "characters": "Text"
+            },
+            "type": "TEXT",
+            "width": 200,
+            "height": 40,
+            "children": [],
+            "ax": -208.1673312504159,
+            "ay": -4389.247992526129,
+            "w": 200,
+            "h": 40,
+            "textRaw": "Text"
+          },
+          {
+            "x": -208.1673312504159,
+            "y": -4389.247992526129,
+            "id": "text_mix9yhlv",
+            "name": "Text",
+            "text": {
+              "color": "#111",
+              "fontSize": 20,
+              "characters": "Text"
+            },
+            "type": "TEXT",
+            "width": 200,
+            "height": 40,
+            "children": [],
+            "ax": -208.1673312504159,
+            "ay": -4389.247992526129,
+            "w": 200,
+            "h": 40,
+            "textRaw": "Text"
+          },
+          {
+            "x": -133.52058997194789,
+            "y": -4639.559472275958,
+            "id": "text_mix9yhy7",
+            "name": "Text",
+            "text": {
+              "color": "#111",
+              "fontSize": 20,
+              "characters": "Text"
+            },
+            "type": "TEXT",
+            "width": 200,
+            "height": 40,
+            "children": [],
+            "ax": -133.52058997194789,
+            "ay": -4639.559472275958,
+            "w": 200,
+            "h": 40,
+            "textRaw": "Text"
+          },
+          {
+            "x": -120.84055472071994,
+            "y": -4580.755593346951,
+            "id": "text_mix9yicr",
+            "name": "Text",
+            "text": {
+              "color": "#111",
+              "fontSize": 20,
+              "characters": "Text"
+            },
+            "type": "TEXT",
+            "width": 200,
+            "height": 40,
+            "children": [],
+            "ax": -120.84055472071994,
+            "ay": -4580.755593346951,
+            "w": 200,
+            "h": 40,
+            "textRaw": "Text"
+          },
+          {
+            "x": -120.84055472071994,
+            "y": -4580.755593346951,
+            "id": "text_mix9yiis",
+            "name": "Text",
+            "text": {
+              "color": "#111",
+              "fontSize": 20,
+              "characters": "Text"
+            },
+            "type": "TEXT",
+            "width": 200,
+            "height": 40,
+            "children": [],
+            "ax": -120.84055472071994,
+            "ay": -4580.755593346951,
+            "w": 200,
+            "h": 40,
+            "textRaw": "Text"
+          },
+          {
+            "x": -120.84055472071994,
+            "y": -4580.755593346951,
+            "id": "text_mix9yiq6",
+            "name": "Text",
+            "text": {
+              "color": "#111",
+              "fontSize": 20,
+              "characters": "Text"
+            },
+            "type": "TEXT",
+            "width": 200,
+            "height": 40,
+            "children": [],
+            "ax": -120.84055472071994,
+            "ay": -4580.755593346951,
+            "w": 200,
+            "h": 40,
+            "textRaw": "Text"
+          },
+          {
+            "x": -165.82106943837448,
+            "y": -4397.598890232363,
+            "id": "text_mix9ymg7",
+            "name": "Text",
+            "text": {
+              "color": "#111",
+              "fontSize": 20,
+              "characters": "Text"
+            },
+            "type": "TEXT",
+            "width": 200,
+            "height": 40,
+            "children": [],
+            "ax": -165.82106943837448,
+            "ay": -4397.598890232363,
+            "w": 200,
+            "h": 40,
+            "textRaw": "Text"
+          },
+          {
+            "x": 1351.8102362068378,
+            "y": -4495.971143776325,
+            "id": "text_mix9yp1f",
+            "name": "Text",
+            "text": {
+              "color": "#111",
+              "fontSize": 20,
+              "characters": "Text"
+            },
+            "type": "TEXT",
+            "width": 200,
+            "height": 40,
+            "children": [],
+            "ax": 1351.8102362068378,
+            "ay": -4495.971143776325,
+            "w": 200,
+            "h": 40,
+            "textRaw": "Text"
+          },
+          {
+            "x": 1344.108565498061,
+            "y": -4497.539630239209,
+            "id": "text_mix9yqy0",
+            "name": "Text",
+            "text": {
+              "color": "#111",
+              "fontSize": 20,
+              "characters": "Text"
+            },
+            "type": "TEXT",
+            "width": 200,
+            "height": 40,
+            "children": [],
+            "ax": 1344.108565498061,
+            "ay": -4497.539630239209,
+            "w": 200,
+            "h": 40,
+            "textRaw": "Text"
+          },
+          {
+            "x": 1344.108565498061,
+            "y": -4497.539630239209,
+            "id": "text_mix9yrbr",
+            "name": "Text",
+            "text": {
+              "color": "#111",
+              "fontSize": 20,
+              "characters": "Text"
+            },
+            "type": "TEXT",
+            "width": 200,
+            "height": 40,
+            "children": [],
+            "ax": 1344.108565498061,
+            "ay": -4497.539630239209,
+            "w": 200,
+            "h": 40,
+            "textRaw": "Text"
+          }
+        ],
+        "ax": -370.96198784480725,
+        "ay": -4491.853270404895,
+        "textRaw": ""
       }
     ],
     "manifest": {},
-    "refW": 1275,
-    "refH": 7347,
+    "refW": 1920,
+    "refH": 1080,
     "interactions": [],
     "focusFrameId": null
   }

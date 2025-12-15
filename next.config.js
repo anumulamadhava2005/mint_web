@@ -10,7 +10,17 @@ const nextConfig = {
         protocol: 'https',
         hostname: 's3-alpha.figma.com',
       },
+      {
+        protocol: 'https',
+        hostname: 'api.mintit.pro',
+      },
     ],
+  },
+  // Increase body size limit for API routes
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '10mb',
+    },
   },
 };
 

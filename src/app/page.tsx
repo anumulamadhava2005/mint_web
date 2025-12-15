@@ -351,6 +351,19 @@ function HomePage() {
   // Load project from storage when opening from projects page
   function loadProjectById(projectId: string) {
     console.log('loadProjectById called with:', projectId);
+    
+    // Helper to fix invalid fileKeys
+    const fixFileKey = (project: any) => {
+      let fileKey = project.fileKey;
+      if (!fileKey || fileKey.length < 10 || !/^[a-zA-Z0-9_-]+$/.test(fileKey)) {
+        // Generate a unique fileKey based on project ID
+        fileKey = projectId.replace('proj_', '');
+        console.log(`[IMPORT] Fixing invalid fileKey "${project.fileKey}" -> "${fileKey}"`);
+        return fileKey;
+      }
+      return fileKey;
+    };
+    
     try {
       // First try sessionStorage (for current session)
       const stored = sessionStorage.getItem('currentProject');
@@ -358,10 +371,11 @@ function HomePage() {
         const project = JSON.parse(stored);
         if (project.id === projectId) {
           console.log('Loaded project from sessionStorage');
+          const fileKey = fixFileKey(project);
           setFileName(project.name);
           setRawRoots(project.rawRoots);
           setOriginalRawRoots(project.rawRoots);
-          setLastFileKey(project.fileKey);
+          setLastFileKey(fileKey);
           if (Array.isArray(project.interactions)) setInteractions(project.interactions);
           // Restore viewport if saved
           if (typeof project.scale === 'number') setScale(project.scale);
@@ -380,11 +394,12 @@ function HomePage() {
       if (stored) {
         const project = JSON.parse(stored);
         console.log('Loaded project from localStorage');
+        const fileKey = fixFileKey(project);
         setFileName(project.name);
         setRawRoots(project.rawRoots);
         setOriginalRawRoots(project.rawRoots);
-  setLastFileKey(project.fileKey);
-  if (Array.isArray(project.interactions)) setInteractions(project.interactions);
+        setLastFileKey(fileKey);
+        if (Array.isArray(project.interactions)) setInteractions(project.interactions);
         // Restore viewport if saved
         if (typeof project.scale === 'number') setScale(project.scale);
         if (project.offset) setOffset(project.offset);
@@ -399,11 +414,12 @@ function HomePage() {
     const project = (window as any).__currentProject;
     if (project && project.id === projectId) {
       console.log('Loaded project from window object');
+      const fileKey = fixFileKey(project);
       setFileName(project.name);
       setRawRoots(project.rawRoots);
       setOriginalRawRoots(project.rawRoots);
-  setLastFileKey(project.fileKey);
-  if (Array.isArray(project.interactions)) setInteractions(project.interactions);
+      setLastFileKey(fileKey);
+      if (Array.isArray(project.interactions)) setInteractions(project.interactions);
       if (typeof project.scale === 'number') setScale(project.scale);
       if (project.offset) setOffset(project.offset);
       else setFitPending(true);
@@ -418,16 +434,36 @@ function HomePage() {
         if (data.success && data.project) {
           const project = data.project;
           console.log('Loaded project from API');
+          
+          // Fix invalid fileKey (like "Card") - generate a proper one
+          let fileKey = project.fileKey;
+          if (!fileKey || fileKey.length < 10 || !/^[a-zA-Z0-9_-]+$/.test(fileKey)) {
+            // Generate a unique fileKey based on project ID
+            fileKey = projectId.replace('proj_', '');
+            console.log(`[IMPORT] Fixing invalid fileKey "${project.fileKey}" -> "${fileKey}"`);
+            
+            // Update the project in the database with the corrected fileKey
+            fetch(`/api/projects/${projectId}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                ...project,
+                fileKey,
+              }),
+            }).catch(err => console.warn('Failed to update fileKey in database:', err));
+          }
+          
           setFileName(project.name);
           setRawRoots(project.rawRoots || []);
           setOriginalRawRoots(project.rawRoots || []);
-          setLastFileKey(project.fileKey);
+          setLastFileKey(fileKey);
           if (Array.isArray(project.interactions)) setInteractions(project.interactions);
           setFitPending(true);
-          // Store in sessionStorage and localStorage for next reload
-          sessionStorage.setItem('currentProject', JSON.stringify(project));
-          localStorage.setItem(`project-${projectId}`, JSON.stringify(project));
-          (window as any).__currentProject = project;
+          // Store in sessionStorage and localStorage for next reload with corrected fileKey
+          const correctedProject = { ...project, fileKey };
+          sessionStorage.setItem('currentProject', JSON.stringify(correctedProject));
+          localStorage.setItem(`project-${projectId}`, JSON.stringify(correctedProject));
+          (window as any).__currentProject = correctedProject;
         }
       })
       .catch(err => console.error('Failed to fetch project from API:', err));
@@ -456,7 +492,11 @@ function HomePage() {
   }, []);
 
   useEffect(() => {
-    if (user && !rawRoots && !showConverter && !showProjects) {
+    // Don't show converter if we're viewing a specific project
+    const hash = window.location.hash || '';
+    const isViewingProject = hash.startsWith('#project=');
+    
+    if (user && !rawRoots && !showConverter && !showProjects && !isViewingProject) {
       setShowConverter(true);
     }
   }, [user, rawRoots, showConverter, showProjects]);
@@ -569,6 +609,27 @@ function HomePage() {
       }
     }
   }, [rawRoots, fileName, selectedIds, selectedFrameId, images, scale, offset, saveStateToStorage, interactions, lastFileKey]);
+
+  // Helper to extract fileKey from Figma URL or use as-is
+  function extractFileKey(input: string): string {
+    const trimmed = input.trim();
+    // If it's a Figma URL: https://www.figma.com/file/KEY/...
+    if (trimmed.includes('figma.com/file/')) {
+      const match = trimmed.match(/figma\.com\/file\/([^\/\?]+)/);
+      if (match && match[1]) return match[1];
+    }
+    // If it has slashes, try to extract the key
+    if (trimmed.includes('/')) {
+      const parts = trimmed.split('/').filter(Boolean);
+      const fileIndex = parts.indexOf('file');
+      if (fileIndex >= 0 && parts.length > fileIndex + 1) {
+        return parts[fileIndex + 1];
+      }
+    }
+    // Otherwise use as-is
+    return trimmed;
+  }
+
   async function onFetch(fileUrlOrKey: string) {
     setError(null);
     const key = fileUrlOrKey.trim();
@@ -638,11 +699,62 @@ function HomePage() {
         setRawRoots(null);
         setLastFileKey(null);
       } else {
+        // Ensure we have a valid fileKey - extract from URL or use the API response
+        const extractedKey = extractFileKey(key);
+        const finalFileKey = fileKey || extractedKey;
+        
         setRawRoots(roots);
         setOriginalRawRoots(roots);
         setSelectedIds(new Set());
         setFitPending(true);
-        setLastFileKey(fileKey ?? key);
+        setLastFileKey(finalFileKey);
+        
+        // Create a new project in the database when importing a Figma file
+        try {
+          console.log('[IMPORT] Creating new project for imported design');
+          const createRes = await fetch('/api/projects', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: fName || 'Untitled Design',
+              fileKey: finalFileKey,
+              rawRoots: roots,
+              frameCount: roots.length,
+            }),
+          });
+          
+          if (createRes.ok) {
+            const createData = await createRes.json();
+            const newProjectId = createData.project?.id;
+            if (newProjectId) {
+              console.log('[IMPORT] Project created with ID:', newProjectId);
+              // Update URL to reflect the new project
+              window.location.hash = `#project=${newProjectId}`;
+              
+              // Store in session/local storage
+              const projectData = {
+                id: newProjectId,
+                name: fName || 'Untitled Design',
+                rawRoots: roots,
+                fileKey: fileKey ?? key,
+                scale,
+                offset,
+                interactions: [],
+              };
+              sessionStorage.setItem('currentProject', JSON.stringify(projectData));
+              localStorage.setItem(`project-${newProjectId}`, JSON.stringify(projectData));
+              (window as any).__currentProject = projectData;
+            } else {
+              console.warn('[IMPORT] Project created but no ID returned');
+            }
+          } else {
+            const errText = await createRes.text();
+            console.warn('[IMPORT] Failed to create project:', createRes.status, errText);
+          }
+        } catch (e) {
+          console.warn('[IMPORT] Error creating project:', e);
+          // Don't fail the import if project creation fails
+        }
       }
       setFileName(fName);
     } catch (e: any) {
@@ -673,6 +785,8 @@ function HomePage() {
         referenceFrame,
         // NEW: include interactions for conversion
         interactions,
+        // Pass fileKey so .env.local uses the same key
+        fileKey: lastFileKey,
       }),
     });
     if (!res.ok) throw new Error((await res.text()) || "Conversion failed");
@@ -1080,6 +1194,41 @@ function HomePage() {
     setRawRoots((prev) => (prev ? updateNodeByIdSafe(prev, id, (n) => ((n as any).name = newName)) : prev));
   }, [selectedFrame]);
 
+  // Helper function to update the fileKey for the current project
+  const updateFileKey = useCallback((newFileKey: string) => {
+    setLastFileKey(newFileKey);
+    
+    // Update in sessionStorage, localStorage, and window object
+    const hash = window.location.hash || "";
+    const projectId = hash.replace('#project=', '');
+    
+    try {
+      const projectData = {
+        id: projectId,
+        name: fileName,
+        rawRoots,
+        fileKey: newFileKey,
+        scale,
+        offset,
+        interactions,
+      };
+      sessionStorage.setItem('currentProject', JSON.stringify(projectData));
+      localStorage.setItem(`project-${projectId}`, JSON.stringify(projectData));
+      (window as any).__currentProject = projectData;
+      console.log('[UPDATE] Updated fileKey to:', newFileKey);
+    } catch (e) {
+      console.error('[UPDATE] Failed to update fileKey:', e);
+    }
+  }, [fileName, rawRoots, scale, offset, interactions]);
+
+  // Expose updateFileKey globally for easy access from console
+  useEffect(() => {
+    (window as any).updateFileKey = updateFileKey;
+    return () => {
+      delete (window as any).updateFileKey;
+    };
+  }, [updateFileKey]);
+
   async function commitLive() {
     try {
       // Require an open project (loaded via hash navigation)
@@ -1141,7 +1290,68 @@ function HomePage() {
         (window as any).__currentProject = projectData;
       } catch { /* ignore */ }
 
-      setCommitMessage('Project saved successfully');
+      // After saving the project, attempt to publish a static snapshot so
+      // `public/live/snapshots/<fileKey>.json` is updated. This is best-effort
+      // and should not block the save flow.
+      let publishSucceeded = false;
+      try {
+        if (lastFileKey) {
+          // Calculate reference dimensions from selected frame or first root
+          let refW = 0;
+          let refH = 0;
+          
+          if (selectedFrame) {
+            refW = selectedFrame.width || 0;
+            refH = selectedFrame.height || 0;
+          } else if (rawRoots && rawRoots.length > 0 && rawRoots[0]) {
+            refW = rawRoots[0].width || 0;
+            refH = rawRoots[0].height || 0;
+          }
+          
+          // Fallback to default dimensions if still zero
+          if (refW === 0 || refH === 0) {
+            refW = 1920;
+            refH = 1080;
+          }
+          
+          console.log('[COMMIT] Publishing snapshot:', { 
+            fileKey: lastFileKey, 
+            rootsCount: rawRoots.length,
+            refW,
+            refH,
+            selectedFrame: selectedFrame?.id || 'none'
+          });
+          
+          const pubRes = await fetch('/api/live/publish', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fileKey: lastFileKey,
+              roots: rawRoots,
+              manifest: {},
+              refW,
+              refH,
+              referenceFrame: selectedFrame || undefined,
+              images: {},
+              interactions,
+            }),
+          });
+          if (pubRes.ok) {
+            const result = await pubRes.json();
+            console.log('[COMMIT] Publish succeeded:', result);
+            publishSucceeded = true;
+          } else {
+            const txt = await pubRes.text().catch(() => '');
+            console.warn('[COMMIT] Publish failed:', pubRes.status, txt);
+          }
+        } else {
+          console.warn('[COMMIT] No fileKey available; skipping publish step');
+        }
+      } catch (e) {
+        console.warn('[COMMIT] Publish attempt error:', e);
+      }
+
+      setCommitMessage(publishSucceeded ? 'Project saved and published' : 'Project saved successfully');
       setCommitSuccess(true);
     } catch (e: any) {
       alert(e?.message || String(e));
@@ -1293,9 +1503,13 @@ function HomePage() {
     return <ProjectsPage />;
   }
 
-  // Show landing page if not logged in
+  // Show landing page if not logged in (but not if we're loading a project)
   if (!user && !loading) {
-    return <Home onGetStarted={() => window.location.href = '/api/auth/login'} />;
+    const hash = typeof window !== 'undefined' ? window.location.hash : '';
+    const isLoadingProject = hash.startsWith('#project=');
+    if (!isLoadingProject) {
+      return <Home onGetStarted={() => window.location.href = '/api/auth/login'} />;
+    }
   }
 
   return (
