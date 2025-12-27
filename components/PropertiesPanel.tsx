@@ -2,7 +2,7 @@
 "use client"
 
 import type React from "react"
-import { useRef, useState } from "react"
+import { useRef, useState, useEffect } from "react"
 import { uploadToMintApi } from "../lib/upload"
 import type { NodeInput } from "../lib/figma-types"
 import { motion, AnimatePresence } from "framer-motion"
@@ -15,8 +15,9 @@ export default function PropertiesPanel(props: {
   onImageChange?: (id: string, url: string) => void
   onClose?: () => void
   onDelete?: (node: NodeInput) => void
+  rawRoots?: NodeInput[] | null
 }) {
-  const { selectedNode, onUpdateSelected, images, onImageChange, onClose, onDelete } = props
+  const { selectedNode, onUpdateSelected, images, onImageChange, onClose, onDelete, rawRoots } = props
   const fileRef = useRef<HTMLInputElement | null>(null)
   const [localImg, setLocalImg] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -35,6 +36,159 @@ export default function PropertiesPanel(props: {
   const [imageSelected, setImageSelected] = useState(false)
   const [imageResize, setImageResize] = useState({ width: 100, height: 100, maintainAspectRatio: true })
   const [imageCrop, setImageCrop] = useState({ x: 0, y: 0, width: 100, height: 100 })
+
+  // API / Data Source states
+  const [showDataSource, setShowDataSource] = useState(false)
+  const [apiUrl, setApiUrl] = useState<string>((selectedNode as any)?.dataSource?.url || '')
+  const [apiMethod, setApiMethod] = useState<string>((selectedNode as any)?.dataSource?.method || 'GET')
+  const [apiHeaders, setApiHeaders] = useState<string>((selectedNode as any)?.dataSource?.headers || '')
+  const [apiParams, setApiParams] = useState<string>((selectedNode as any)?.dataSource?.params || '')
+  const [apiFetching, setApiFetching] = useState(false)
+  const [apiFetchError, setApiFetchError] = useState<string | null>(null)
+  const [apiResponse, setApiResponse] = useState<any>(null)
+  const [apiFields, setApiFields] = useState<string[]>([])
+  const [selectedApiFields, setSelectedApiFields] = useState<string[]>((selectedNode as any)?.dataSource?.selectedFields || [])
+  const [infiniteScroll, setInfiniteScroll] = useState<boolean>((selectedNode as any)?.dataSource?.infiniteScroll || false)
+  const [itemSpacing, setItemSpacing] = useState<number>((selectedNode as any)?.dataSource?.itemSpacing || 10)
+  const [scrollDirection, setScrollDirection] = useState<'vertical' | 'horizontal'>((selectedNode as any)?.dataSource?.direction || 'vertical')
+
+  // Sync API state when selectedNode changes
+  useEffect(() => {
+    if (selectedNode) {
+      const ds = (selectedNode as any).dataSource
+      setApiUrl(ds?.url || '')
+      setApiMethod(ds?.method || 'GET')
+      setApiHeaders(ds?.headers || '')
+      setApiParams(ds?.params || '')
+      setSelectedApiFields(ds?.selectedFields || [])
+      setApiResponse(ds?.lastResponse || null)
+      setInfiniteScroll(ds?.infiniteScroll || false)
+      setItemSpacing(ds?.itemSpacing || 10)
+      setScrollDirection(ds?.direction || 'vertical')
+      if (ds?.lastResponse) {
+        setApiFields(extractFieldsFromResponse(ds.lastResponse))
+      }
+    }
+  }, [selectedNode?.id])
+
+  // Extract field keys from a JSON response (handles arrays and objects)
+  function extractFieldsFromResponse(data: any): string[] {
+    if (!data) return []
+    // If array, take first item
+    const sample = Array.isArray(data) ? data[0] : data
+    if (!sample || typeof sample !== 'object') return []
+    return Object.keys(sample)
+  }
+
+  // Fetch data from API
+  async function handleFetchApi() {
+    if (!apiUrl) return
+    setApiFetching(true)
+    setApiFetchError(null)
+    setApiResponse(null)
+    setApiFields([])
+
+    try {
+      // Parse headers
+      let headers: Record<string, string> = {}
+      if (apiHeaders.trim()) {
+        try {
+          headers = JSON.parse(apiHeaders)
+        } catch {
+          // Try key: value format per line
+          apiHeaders.split('\n').forEach(line => {
+            const [k, ...v] = line.split(':')
+            if (k && v.length) headers[k.trim()] = v.join(':').trim()
+          })
+        }
+      }
+
+      // Parse params
+      let url = apiUrl
+      if (apiParams.trim()) {
+        try {
+          const params = JSON.parse(apiParams)
+          const qs = new URLSearchParams(params).toString()
+          url += (url.includes('?') ? '&' : '?') + qs
+        } catch {
+          // Try key=value format per line
+          const qs = apiParams.split('\n').map(l => l.trim()).filter(Boolean).join('&')
+          url += (url.includes('?') ? '&' : '?') + qs
+        }
+      }
+
+      const res = await fetch(url, {
+        method: apiMethod,
+        headers: { 'Content-Type': 'application/json', ...headers },
+      })
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`)
+
+      const json = await res.json()
+      setApiResponse(json)
+      setApiFields(extractFieldsFromResponse(json))
+
+      // Save to node
+      onUpdateSelected((n) => {
+        (n as any).dataSource = {
+          url: apiUrl,
+          method: apiMethod,
+          headers: apiHeaders,
+          params: apiParams,
+          selectedFields: selectedApiFields,
+          lastResponse: json,
+          infiniteScroll: infiniteScroll,
+          itemSpacing: itemSpacing,
+          direction: scrollDirection,
+        }
+      })
+    } catch (err: any) {
+      setApiFetchError(err?.message || 'Failed to fetch')
+    } finally {
+      setApiFetching(false)
+    }
+  }
+
+  // Save selected fields to node
+  function handleSaveDataSource() {
+    onUpdateSelected((n) => {
+      (n as any).dataSource = {
+        url: apiUrl,
+        method: apiMethod,
+        headers: apiHeaders,
+        params: apiParams,
+        selectedFields: selectedApiFields,
+        lastResponse: apiResponse,
+        infiniteScroll: infiniteScroll,
+        itemSpacing: itemSpacing,
+        direction: scrollDirection,
+      }
+    })
+  }
+
+  // Find parent node with dataSource for data binding
+  function findParentWithDataSource(nodeId: string): { parent: NodeInput | null; fields: string[] } {
+    if (!rawRoots) return { parent: null, fields: [] }
+    
+    // Build parent map
+    const parentMap = new Map<string, NodeInput>()
+    const walk = (node: NodeInput, parent: NodeInput | null) => {
+      if (parent) parentMap.set(node.id, parent)
+      node.children?.forEach(child => walk(child, node))
+    }
+    rawRoots.forEach(root => walk(root, null))
+    
+    // Walk up to find a parent with dataSource
+    let current = parentMap.get(nodeId)
+    while (current) {
+      if ((current as any).dataSource?.lastResponse) {
+        const fields = extractFieldsFromResponse((current as any).dataSource.lastResponse)
+        return { parent: current, fields }
+      }
+      current = parentMap.get(current.id)
+    }
+    return { parent: null, fields: [] }
+  }
 
   // Resize functionality
   const handleResizeStart = (e: React.MouseEvent) => {
@@ -1004,6 +1158,82 @@ export default function PropertiesPanel(props: {
         {selectedNode.text && (
           <div className={styles.section}>
             <div className={styles.label}>Text</div>
+            
+            {/* Data Binding Dropdown */}
+            {(() => {
+              const { parent, fields } = findParentWithDataSource(selectedNode.id)
+              if (parent && fields.length > 0) {
+                const boundField = (selectedNode as any).dataBinding?.field || ''
+                return (
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={{ 
+                      fontSize: 11, 
+                      color: '#10b981', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: 6,
+                      marginBottom: 6 
+                    }}>
+                      <span>🔗</span>
+                      <span>Bind to Data Field</span>
+                    </label>
+                    <select
+                      value={boundField}
+                      onChange={(e) => {
+                        const field = e.target.value
+                        onUpdateSelected((n) => {
+                          if (field) {
+                            (n as any).dataBinding = { 
+                              field, 
+                              parentId: parent.id,
+                              type: 'field'
+                            }
+                            // Optionally set preview text
+                            const response = (parent as any).dataSource?.lastResponse
+                            const sample = Array.isArray(response) ? response[0] : response
+                            if (sample && sample[field] !== undefined) {
+                              n.text = { ...(n.text || {}), characters: `{{${field}}}` }
+                            }
+                          } else {
+                            (n as any).dataBinding = null
+                          }
+                        })
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        backgroundColor: boundField ? 'rgba(16, 185, 129, 0.15)' : 'rgba(0,0,0,0.3)',
+                        color: '#fff',
+                        border: boundField ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(255,255,255,0.15)',
+                        borderRadius: 6,
+                        fontSize: 12,
+                        outline: 'none',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <option value="" style={{ background: '#333' }}>-- Select field --</option>
+                      {fields.map(f => (
+                        <option key={f} value={f} style={{ background: '#333' }}>{f}</option>
+                      ))}
+                    </select>
+                    {boundField && (
+                      <div style={{ 
+                        marginTop: 6, 
+                        padding: '6px 8px', 
+                        background: 'rgba(16, 185, 129, 0.1)', 
+                        borderRadius: 4,
+                        fontSize: 10,
+                        color: '#6ee7b7'
+                      }}>
+                        ✓ Bound to <code style={{ background: 'rgba(0,0,0,0.3)', padding: '1px 4px', borderRadius: 2 }}>{boundField}</code> from parent data source
+                      </div>
+                    )}
+                  </div>
+                )
+              }
+              return null
+            })()}
+
             <textarea
               className={`${styles.textarea}`}
               rows={3}
@@ -1609,6 +1839,419 @@ export default function PropertiesPanel(props: {
                 -90°
               </button>
             </div>
+          </div>
+
+          {/* Data Source / API Integration */}
+          <div style={{ 
+            marginTop: 16, 
+            borderTop: '1px solid rgba(255,255,255,0.1)', 
+            paddingTop: 16 
+          }}>
+            <button
+              type="button"
+              onClick={() => setShowDataSource(!showDataSource)}
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '8px 12px',
+                background: showDataSource ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255,255,255,0.05)',
+                border: showDataSource ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 8,
+                color: '#fff',
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span>🔗</span>
+                Data Source
+              </span>
+              <span style={{ transform: showDataSource ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>▼</span>
+            </button>
+
+            <AnimatePresence>
+              {showDataSource && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  style={{ overflow: 'hidden' }}
+                >
+                  <div style={{ 
+                    marginTop: 12, 
+                    padding: 12, 
+                    background: 'rgba(255,255,255,0.03)', 
+                    borderRadius: 8,
+                    border: '1px solid rgba(255,255,255,0.08)'
+                  }}>
+                    {/* API URL */}
+                    <div style={{ marginBottom: 12 }}>
+                      <label style={{ fontSize: 11, color: '#9ca3af', display: 'block', marginBottom: 4 }}>
+                        API Endpoint URL
+                      </label>
+                      <input
+                        type="text"
+                        value={apiUrl}
+                        onChange={(e) => setApiUrl(e.target.value)}
+                        placeholder="https://api.example.com/data"
+                        style={{
+                          width: '100%',
+                          padding: '8px 10px',
+                          backgroundColor: 'rgba(0,0,0,0.3)',
+                          color: '#fff',
+                          border: '1px solid rgba(255,255,255,0.15)',
+                          borderRadius: 6,
+                          fontSize: 12,
+                          outline: 'none'
+                        }}
+                      />
+                    </div>
+
+                    {/* Method */}
+                    <div style={{ marginBottom: 12 }}>
+                      <label style={{ fontSize: 11, color: '#9ca3af', display: 'block', marginBottom: 4 }}>
+                        Method
+                      </label>
+                      <select
+                        value={apiMethod}
+                        onChange={(e) => setApiMethod(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '8px 10px',
+                          backgroundColor: 'rgba(0,0,0,0.3)',
+                          color: '#fff',
+                          border: '1px solid rgba(255,255,255,0.15)',
+                          borderRadius: 6,
+                          fontSize: 12,
+                          outline: 'none'
+                        }}
+                      >
+                        <option value="GET">GET</option>
+                        <option value="POST">POST</option>
+                        <option value="PUT">PUT</option>
+                        <option value="DELETE">DELETE</option>
+                      </select>
+                    </div>
+
+                    {/* Headers */}
+                    <div style={{ marginBottom: 12 }}>
+                      <label style={{ fontSize: 11, color: '#9ca3af', display: 'block', marginBottom: 4 }}>
+                        Headers (JSON or key: value per line)
+                      </label>
+                      <textarea
+                        value={apiHeaders}
+                        onChange={(e) => setApiHeaders(e.target.value)}
+                        placeholder='{"Authorization": "Bearer token"}'
+                        rows={3}
+                        style={{
+                          width: '100%',
+                          padding: '8px 10px',
+                          backgroundColor: 'rgba(0,0,0,0.3)',
+                          color: '#fff',
+                          border: '1px solid rgba(255,255,255,0.15)',
+                          borderRadius: 6,
+                          fontSize: 11,
+                          fontFamily: 'monospace',
+                          outline: 'none',
+                          resize: 'vertical'
+                        }}
+                      />
+                    </div>
+
+                    {/* Query Params */}
+                    <div style={{ marginBottom: 12 }}>
+                      <label style={{ fontSize: 11, color: '#9ca3af', display: 'block', marginBottom: 4 }}>
+                        Query Params (JSON or key=value per line)
+                      </label>
+                      <textarea
+                        value={apiParams}
+                        onChange={(e) => setApiParams(e.target.value)}
+                        placeholder='{"limit": 10, "page": 1}'
+                        rows={2}
+                        style={{
+                          width: '100%',
+                          padding: '8px 10px',
+                          backgroundColor: 'rgba(0,0,0,0.3)',
+                          color: '#fff',
+                          border: '1px solid rgba(255,255,255,0.15)',
+                          borderRadius: 6,
+                          fontSize: 11,
+                          fontFamily: 'monospace',
+                          outline: 'none',
+                          resize: 'vertical'
+                        }}
+                      />
+                    </div>
+
+                    {/* Fetch Button */}
+                    <button
+                      type="button"
+                      onClick={handleFetchApi}
+                      disabled={apiFetching || !apiUrl}
+                      style={{
+                        width: '100%',
+                        padding: '10px',
+                        background: apiFetching ? 'rgba(16, 185, 129, 0.3)' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: 6,
+                        fontSize: 13,
+                        fontWeight: 500,
+                        cursor: apiFetching || !apiUrl ? 'not-allowed' : 'pointer',
+                        opacity: !apiUrl ? 0.5 : 1,
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      {apiFetching ? '⏳ Fetching...' : '🚀 Fetch Data'}
+                    </button>
+
+                    {/* Error */}
+                    {apiFetchError && (
+                      <div style={{
+                        marginTop: 12,
+                        padding: 10,
+                        background: 'rgba(239, 68, 68, 0.1)',
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        borderRadius: 6,
+                        color: '#fca5a5',
+                        fontSize: 12
+                      }}>
+                        ⚠️ {apiFetchError}
+                      </div>
+                    )}
+
+                    {/* Response Preview & Field Selection */}
+                    {apiResponse && (
+                      <div style={{ marginTop: 12 }}>
+                        <div style={{ 
+                          fontSize: 11, 
+                          color: '#10b981', 
+                          marginBottom: 8,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6
+                        }}>
+                          <span>✅</span>
+                          <span>Data fetched successfully</span>
+                        </div>
+
+                        {/* Fields to display */}
+                        {apiFields.length > 0 && (
+                          <div style={{ marginBottom: 12 }}>
+                            <label style={{ fontSize: 11, color: '#9ca3af', display: 'block', marginBottom: 6 }}>
+                              Select fields to display:
+                            </label>
+                            <div style={{ 
+                              display: 'flex', 
+                              flexWrap: 'wrap', 
+                              gap: 6,
+                              maxHeight: 120,
+                              overflowY: 'auto'
+                            }}>
+                              {apiFields.map(field => (
+                                <label
+                                  key={field}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 4,
+                                    padding: '4px 8px',
+                                    background: selectedApiFields.includes(field) 
+                                      ? 'rgba(16, 185, 129, 0.2)' 
+                                      : 'rgba(255,255,255,0.05)',
+                                    border: selectedApiFields.includes(field)
+                                      ? '1px solid rgba(16, 185, 129, 0.4)'
+                                      : '1px solid rgba(255,255,255,0.1)',
+                                    borderRadius: 4,
+                                    fontSize: 11,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease'
+                                  }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedApiFields.includes(field)}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setSelectedApiFields([...selectedApiFields, field])
+                                      } else {
+                                        setSelectedApiFields(selectedApiFields.filter(f => f !== field))
+                                      }
+                                    }}
+                                    style={{ accentColor: '#10b981' }}
+                                  />
+                                  <span style={{ color: '#e5e7eb' }}>{field}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Infinite Scroll Settings */}
+                        {Array.isArray(apiResponse) && apiResponse.length > 0 && (
+                          <div style={{ 
+                            marginBottom: 12,
+                            padding: 12,
+                            background: 'rgba(99, 102, 241, 0.1)',
+                            border: '1px solid rgba(99, 102, 241, 0.2)',
+                            borderRadius: 8
+                          }}>
+                            <label style={{ 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              gap: 8,
+                              cursor: 'pointer',
+                              marginBottom: infiniteScroll ? 12 : 0
+                            }}>
+                              <input
+                                type="checkbox"
+                                checked={infiniteScroll}
+                                onChange={(e) => setInfiniteScroll(e.target.checked)}
+                                style={{ accentColor: '#8b5cf6', width: 16, height: 16 }}
+                              />
+                              <span style={{ fontSize: 12, fontWeight: 500, color: '#c4b5fd' }}>
+                                ♾️ Enable Infinite Scroll
+                              </span>
+                            </label>
+
+                            {infiniteScroll && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                {/* Direction */}
+                                <div>
+                                  <label style={{ fontSize: 11, color: '#9ca3af', display: 'block', marginBottom: 4 }}>
+                                    Scroll Direction
+                                  </label>
+                                  <div style={{ display: 'flex', gap: 6 }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => setScrollDirection('vertical')}
+                                      style={{
+                                        flex: 1,
+                                        padding: '6px 10px',
+                                        background: scrollDirection === 'vertical' ? 'rgba(139, 92, 246, 0.3)' : 'rgba(255,255,255,0.05)',
+                                        border: scrollDirection === 'vertical' ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid rgba(255,255,255,0.1)',
+                                        borderRadius: 4,
+                                        color: '#fff',
+                                        fontSize: 11,
+                                        cursor: 'pointer'
+                                      }}
+                                    >
+                                      ↕ Vertical
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setScrollDirection('horizontal')}
+                                      style={{
+                                        flex: 1,
+                                        padding: '6px 10px',
+                                        background: scrollDirection === 'horizontal' ? 'rgba(139, 92, 246, 0.3)' : 'rgba(255,255,255,0.05)',
+                                        border: scrollDirection === 'horizontal' ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid rgba(255,255,255,0.1)',
+                                        borderRadius: 4,
+                                        color: '#fff',
+                                        fontSize: 11,
+                                        cursor: 'pointer'
+                                      }}
+                                    >
+                                      ↔ Horizontal
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* Item Spacing */}
+                                <div>
+                                  <label style={{ fontSize: 11, color: '#9ca3af', display: 'block', marginBottom: 4 }}>
+                                    Item Spacing: {itemSpacing}px
+                                  </label>
+                                  <input
+                                    type="range"
+                                    min="0"
+                                    max="50"
+                                    value={itemSpacing}
+                                    onChange={(e) => setItemSpacing(Number(e.target.value))}
+                                    style={{ width: '100%', accentColor: '#8b5cf6' }}
+                                  />
+                                </div>
+
+                                {/* Preview info */}
+                                <div style={{
+                                  padding: '8px 10px',
+                                  background: 'rgba(0,0,0,0.3)',
+                                  borderRadius: 4,
+                                  fontSize: 10,
+                                  color: '#a5b4fc'
+                                }}>
+                                  📊 {apiResponse.length} items will be rendered in {scrollDirection} scroll
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Save button */}
+                        <button
+                          type="button"
+                          onClick={handleSaveDataSource}
+                          style={{
+                            width: '100%',
+                            padding: '8px',
+                            background: 'rgba(99, 102, 241, 0.2)',
+                            border: '1px solid rgba(99, 102, 241, 0.4)',
+                            color: '#a5b4fc',
+                            borderRadius: 6,
+                            fontSize: 12,
+                            fontWeight: 500,
+                            cursor: 'pointer',
+                            marginBottom: 12
+                          }}
+                        >
+                          💾 Save Data Source Config
+                        </button>
+
+                        {/* Preview Box */}
+                        <div style={{
+                          background: 'rgba(0,0,0,0.4)',
+                          border: '1px solid rgba(255,255,255,0.1)',
+                          borderRadius: 8,
+                          padding: 10,
+                          maxHeight: 200,
+                          overflowY: 'auto'
+                        }}>
+                          <div style={{ fontSize: 10, color: '#6b7280', marginBottom: 6, textTransform: 'uppercase' }}>
+                            Response Preview
+                          </div>
+                          <pre style={{
+                            fontSize: 10,
+                            color: '#d1d5db',
+                            fontFamily: 'monospace',
+                            margin: 0,
+                            whiteSpace: 'pre-wrap',
+                            wordBreak: 'break-all'
+                          }}>
+                            {JSON.stringify(
+                              Array.isArray(apiResponse) 
+                                ? apiResponse.slice(0, 3) 
+                                : apiResponse, 
+                              null, 
+                              2
+                            )}
+                            {Array.isArray(apiResponse) && apiResponse.length > 3 && (
+                              <span style={{ color: '#6b7280' }}>
+                                {'\n'}... and {apiResponse.length - 3} more items
+                              </span>
+                            )}
+                          </pre>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       </motion.aside>

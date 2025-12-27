@@ -14,8 +14,35 @@ html, body, #root { margin: 0; height: 100%; }
 [data-name][style*="border-top-right-radius"],
 [data-name][style*="border-bottom-left-radius"],
 [data-name][style*="border-bottom-right-radius"] { contain: paint; }
-* { transform-style: preserve-3d; }`;
+* { transform-style: preserve-3d; }
+
+/* Canvas-like button styles used by converted projects. */
+.mint-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: none;
+  background: #fff;
+  box-shadow: 0 6px 18px rgba(12,11,16,0.12);
+  transition: transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
+.mint-button:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(12,11,16,0.14); }
+.mint-button:active { transform: translateY(0); }
+
+/* If a TEXT node is rendered as a button, do not apply background/border/shadow. */
+.mint-button[data-is-text="1"] {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+`;
+}
+
 
 export function tokensTs() {
   return `export const tokens = {

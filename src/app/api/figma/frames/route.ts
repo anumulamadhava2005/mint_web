@@ -1,6 +1,39 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
 
+// Simple in-memory cache and in-flight deduplication
+const framesCache = new Map<string, { time: number; data: any }>();
+const framesInFlight = new Map<string, Promise<NextResponse>>();
+const CACHE_TTL_MS = 60_000; // 1 minute cache to soften rate limits
+const MAX_RETRIES = 4;
+const BASE_DELAY_MS = 800;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchFigmaWithBackoff(apiUrl: string, headers: Record<string, string>) {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const resp = await fetch(apiUrl, { headers });
+    if (resp.status !== 429) return resp;
+
+    // Respect Retry-After if provided
+    const ra = resp.headers.get('Retry-After');
+    let waitMs = BASE_DELAY_MS * Math.pow(2, attempt);
+    if (ra) {
+      const seconds = parseInt(ra, 10);
+      if (!Number.isNaN(seconds)) {
+        waitMs = Math.max(waitMs, seconds * 1000);
+      }
+    }
+    const errBody = await resp.text();
+    console.warn(`Figma 429, attempt ${attempt + 1}/${MAX_RETRIES + 1}, waiting ${waitMs}ms`, errBody.substring(0, 200));
+    await sleep(waitMs);
+  }
+  // Final attempt result
+  return fetch(apiUrl, { headers });
+}
+
 async function refreshAccessToken(refreshToken: string) {
   const tokenRes = await fetch("https://api.figma.com/v1/oauth/token", {
     method: "POST",
@@ -81,16 +114,32 @@ export async function GET(req: NextRequest) {
       ? `https://api.figma.com/v1/files/${fileKey}/nodes?ids=${encodeURIComponent(nodeId)}`
       : `https://api.figma.com/v1/files/${fileKey}`;
 
-    const resp = await fetch(apiUrl, {
-      headers: {
+    const cacheKey = `${fileKey}::${nodeId || 'root'}`;
+    const now = Date.now();
+
+    // Serve from cache when fresh
+    const cached = framesCache.get(cacheKey);
+    if (cached && (now - cached.time) < CACHE_TTL_MS) {
+      return NextResponse.json(cached.data);
+    }
+
+    // Deduplicate concurrent identical requests
+    const existing = framesInFlight.get(cacheKey);
+    if (existing) {
+      return await existing;
+    }
+
+    const inFlight = (async () => {
+      const resp = await fetchFigmaWithBackoff(apiUrl, {
         Authorization: `Bearer ${accessToken}`,
-      },
-    });
+      });
 
     if (!resp.ok) {
       const err = await resp.text();
       console.error(`Figma API error ${resp.status}:`, err);
-      return NextResponse.json({ status: resp.status, err }, { status: resp.status });
+        const res = NextResponse.json({ status: resp.status, err }, { status: resp.status });
+        framesInFlight.delete(cacheKey);
+        return res;
     }
 
     let data;
@@ -100,10 +149,12 @@ export async function GET(req: NextRequest) {
       console.error("Failed to parse Figma API response as JSON:", parseError);
       const responseText = await resp.text();
       console.error("Response text:", responseText);
-      return NextResponse.json({ 
+        const res = NextResponse.json({ 
         error: "Invalid JSON response from Figma API", 
         details: responseText.substring(0, 200) 
       }, { status: 500 });
+        framesInFlight.delete(cacheKey);
+        return res;
     }
 
     // Extract properties: support both payload shapes
@@ -131,6 +182,8 @@ export async function GET(req: NextRequest) {
 
     // Create response and set any refreshed cookies
     const response = NextResponse.json(body);
+    framesCache.set(cacheKey, { time: Date.now(), data: body });
+    framesInFlight.delete(cacheKey);
     if (refreshed) {
       response.cookies.set("figma_access", refreshed.access_token, {
         httpOnly: true,
@@ -150,6 +203,10 @@ export async function GET(req: NextRequest) {
       }
     }
     return response;
+    })();
+
+    framesInFlight.set(cacheKey, inFlight);
+    return await inFlight;
 
   } catch (err) {
     console.error("Error fetching frames:", err);

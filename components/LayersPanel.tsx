@@ -50,6 +50,48 @@ interface LayersPanelProps {
   setSelectedIds: React.Dispatch<React.SetStateAction<Set<string>>>
 }
 
+// Helpers to remove and insert nodes in the nested tree used by the layers panel
+function removeNodeByIdFromList(list: NodeInput[], id: string): { list: NodeInput[]; removed: NodeInput | null } {
+  let removed: NodeInput | null = null;
+  const rec = (node: NodeInput): NodeInput | null => {
+    if (String(node.id) === String(id)) { removed = node; return null; }
+    if (Array.isArray(node.children) && node.children.length) {
+      const nextChildren: NodeInput[] = [];
+      for (const c of node.children) {
+        const r = rec(c);
+        if (r) nextChildren.push(r);
+      }
+      if (nextChildren.length !== node.children.length) {
+        return { ...node, children: nextChildren } as NodeInput;
+      }
+    }
+    return node;
+  };
+  const out: NodeInput[] = [];
+  for (const n of list) {
+    const r = rec(n);
+    if (r) out.push(r);
+  }
+  return { list: out, removed };
+}
+
+function insertNodeUnderParent(list: NodeInput[], parentId: string, nodeToInsert: NodeInput): NodeInput[] {
+  const rec = (node: NodeInput): NodeInput => {
+    if (String(node.id) === String(parentId)) {
+      const children = Array.isArray(node.children) ? [...node.children, nodeToInsert] : [nodeToInsert];
+      return { ...node, children };
+    }
+    if (Array.isArray(node.children) && node.children.length) {
+      const nextChildren = node.children.map(rec);
+      if (nextChildren.some((c, i) => c !== node.children![i])) {
+        return { ...node, children: nextChildren };
+      }
+    }
+    return node;
+  };
+  return list.map(rec);
+}
+
 // Modern Sortable Layer Component
 const SortableLayer: React.FC<{
   layer: NodeInput
@@ -79,6 +121,21 @@ const SortableLayer: React.FC<{
   return (
     <motion.div ref={setNodeRef} style={style} layout className="mb-3 relative group">
       <div
+        onDragOver={(e)=>{ e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+        onDrop={(e)=>{
+          try {
+            e.stopPropagation(); e.preventDefault();
+            const json = e.dataTransfer.getData('application/json');
+            if (!json) return;
+            const parsed = JSON.parse(json);
+            if (parsed && parsed.existingId) {
+              // Move existing node into this layer (as child)
+              const parentId = layer.id;
+              const ev = new CustomEvent('layers-panel-move', { detail: { parentId, existingId: parsed.existingId } });
+              window.dispatchEvent(ev);
+            }
+          } catch (err) {}
+        }}
         className={`
           flex items-center gap-1 px-2 py-1 transition-all duration-200 cursor-pointer relative z-10 rounded
           ${isDragging ? "opacity-50" : ""}
@@ -86,6 +143,7 @@ const SortableLayer: React.FC<{
             ? (isFirstFrame ? "bg-blue-800/60 text-white" : "bg-purple-700/60 text-white")
             : "text-gray-200 hover:bg-gray-600/40"
           }
+          
         `}
         style={isSelected ? {
           border: '1px solid rgba(196, 181, 253, 0.4)'
@@ -105,6 +163,14 @@ const SortableLayer: React.FC<{
         <div
           {...attributes}
           {...listeners}
+          draggable={true}
+          onDragStart={(e) => {
+            try {
+              e.dataTransfer.setData('application/json', JSON.stringify({ existingId: layer.id, type: layer.type, name: layer.name, width: (layer as any).width, height: (layer as any).height, children: layer.children || [] }));
+              e.dataTransfer.setData('text/plain', String(layer.name || ''));
+              e.dataTransfer.effectAllowed = 'copyMove';
+            } catch (err) {}
+          }}
           className={`cursor-grab active:cursor-grabbing transition-all flex-shrink-0 ${isSelected ? 'opacity-70' : 'opacity-30 group-hover:opacity-100'}`}
           aria-label="Drag layer"
         >
@@ -199,6 +265,14 @@ const ChildLayer: React.FC<{
             : "text-gray-200 hover:bg-gray-600/40"
           }
         `}
+        draggable={true}
+        onDragStart={(e) => {
+          try {
+            e.dataTransfer.setData('application/json', JSON.stringify({ existingId: layer.id, type: layer.type, name: layer.name, width: (layer as any).width, height: (layer as any).height, children: layer.children || [] }));
+            e.dataTransfer.setData('text/plain', String(layer.name || ''));
+            e.dataTransfer.effectAllowed = 'copyMove';
+          } catch (err) {}
+        }}
         style={isSelected ? {
           border: '1px solid rgba(196, 181, 253, 0.4)'
         } : {}}
@@ -285,9 +359,34 @@ const LayersPanel: React.FC<LayersPanelProps> = ({ layers, setLayers, selectedId
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
     if (over && active.id !== over.id) {
+      const activeId = String(active.id)
+      const overId = String(over.id)
+      // Find node objects
+      const findById = (arr: NodeInput[], id: string): NodeInput | null => {
+        const stack = [...arr]
+        while (stack.length) {
+          const n = stack.pop() as NodeInput
+          if (!n) continue
+          if (String(n.id) === id) return n
+          if (n.children) stack.push(...n.children)
+        }
+        return null
+      }
+      const overNode = findById(layers, overId)
+      // If the target is a FRAME, treat the drop as a nesting operation (insert as child)
+      if (overNode && String((overNode as any).type || '').toUpperCase() === 'FRAME') {
+        const { list: without, removed } = removeNodeByIdFromList(layers, activeId)
+        if (!removed) return
+        const next = insertNodeUnderParent(without, overId, removed)
+        setLayers(next)
+        setExpandedIds((prev) => new Set(prev).add(overId))
+        setSelectedIds(new Set([removed.id]))
+        return
+      }
+      // Default: reorder at top level (existing behavior)
       const oldIndex = layers.findIndex((item) => item.id === active.id)
       const newIndex = layers.findIndex((item) => item.id === over.id)
-      setLayers(arrayMove(layers, oldIndex, newIndex))
+      if (oldIndex >= 0 && newIndex >= 0) setLayers(arrayMove(layers, oldIndex, newIndex))
     }
   }
 
@@ -310,6 +409,26 @@ const LayersPanel: React.FC<LayersPanelProps> = ({ layers, setLayers, selectedId
       return next
     })
   }
+
+  // Listen for sidebar-native drop moves dispatched by individual rows
+  React.useEffect(() => {
+    const handler = (ev: any) => {
+      try {
+        const { parentId, existingId } = ev.detail || {};
+        if (!existingId) return;
+        const { list: without, removed } = removeNodeByIdFromList(layers, String(existingId));
+        if (!removed) return;
+        const next = insertNodeUnderParent(without, String(parentId), removed);
+        setLayers(next);
+        setExpandedIds((prev) => new Set(prev).add(String(parentId)));
+        setSelectedIds(new Set([removed.id]));
+      } catch (err) {
+        // ignore
+      }
+    };
+    window.addEventListener('layers-panel-move', handler as EventListener);
+    return () => window.removeEventListener('layers-panel-move', handler as EventListener);
+  }, [layers, setLayers, setSelectedIds]);
 
   if (!layers || layers.length === 0) {
     return (

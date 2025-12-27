@@ -32,8 +32,9 @@ function getAbsAndSize(n: any) {
 // Map node fields to a stable live/canvas shape and drop absoluteBoundingBox
 function normalizeCommon(n: any, ax: number, ay: number, w: number, h: number) {
   const out: any = { ...n };
-  out.ax = ax;
-  out.ay = ay;
+  // Preserve original ax/ay if present; otherwise use computed values
+  out.ax = n.ax != null ? Number(n.ax) : ax;
+  out.ay = n.ay != null ? Number(n.ay) : ay;
   out.w = w;
   out.h = h;
   out.width = out.width ?? w;     // size mapping: width <- w
@@ -90,20 +91,30 @@ function mapNoRef(
   node: any,
   manifestMap: Record<string, string>,
   parentAbsX?: number,
-  parentAbsY?: number
+  parentAbsY?: number,
+  isRoot = false
 ): any {
   const { ax, ay, w, h } = getAbsAndSize(node);
   const mapped: any = normalizeCommon(node, ax, ay, w, h);
-  const hasLocal = node.x != null && node.y != null;
-  if (parentAbsX == null || parentAbsY == null) {
-    // root
-    mapped.x = hasLocal ? Number(node.x) : 0;
-    mapped.y = hasLocal ? Number(node.y) : 0;
+  
+  if (isRoot || (parentAbsX == null && parentAbsY == null)) {
+    // Root nodes always start at (0, 0)
+    mapped.x = 0;
+    mapped.y = 0;
   } else {
-    // child: always compute coordinates relative to parent absolute coords
-    // (ignore any stored absolute-looking x/y on the child to ensure consistency)
-    mapped.x = Math.round(ax - parentAbsX);
-    mapped.y = Math.round(ay - parentAbsY);
+    // Prefer local x/y delta if it yields a smaller magnitude (handles mixed coordinate spaces).
+    const deltaFromAxX = Math.round(ax - (parentAbsX ?? 0));
+    const deltaFromAxY = Math.round(ay - (parentAbsY ?? 0));
+    const localX = (node.x != null ? Number(node.x) : ax);
+    const localY = (node.y != null ? Number(node.y) : ay);
+    const parentLocalX = parentAbsX ?? 0;
+    const parentLocalY = parentAbsY ?? 0;
+    const deltaFromLocalX = Math.round(localX - parentLocalX);
+    const deltaFromLocalY = Math.round(localY - parentLocalY);
+
+    // Choose the delta with smaller absolute magnitude (more likely the true local offset)
+    mapped.x = Math.abs(deltaFromLocalX) <= Math.abs(deltaFromAxX) ? deltaFromLocalX : deltaFromAxX;
+    mapped.y = Math.abs(deltaFromLocalY) <= Math.abs(deltaFromAxY) ? deltaFromLocalY : deltaFromAxY;
   }
   mapped.width = mapped.width ?? mapped.w;
   mapped.height = mapped.height ?? mapped.h;
@@ -438,14 +449,14 @@ export async function POST(req: NextRequest) {
         mappedRoots = [syntheticRoot];
       }
     } else {
-      // No reference: compute local x/y relative to parent absolute; root x/y default to 0
+      // No reference: roots always start at (0,0), children are relative to parent
       mappedRoots = (Array.isArray(roots) ? roots : []).map((r: any) => {
         const { ax, ay } = getAbsAndSize(r);
-        const m = mapNoRef(r, mergedManifest);
-        if (r.x == null) m.x = 0;
-        if (r.y == null) m.y = 0;
-        m.ax = ax;
-        m.ay = ay;
+        const m = mapNoRef(r, mergedManifest, undefined, undefined, true); // isRoot = true
+        // Ensure root is at (0, 0); do NOT modify original ax/ay
+        m.x = 0;
+        m.y = 0;
+        // keep m.ax/m.ay as produced by normalizeCommon (preserves original ax/ay when present)
         return m;
       });
     }
@@ -502,35 +513,43 @@ export async function POST(req: NextRequest) {
       focusFrameId: focusFrameId ?? null,
     });
 
-    // Write a static backup snapshot (optional) - await to ensure it completes
+    // Write a static backup snapshot (optional).
+    // Dev behavior is controlled by env flags:
+    // - LIVE_WRITE_SNAPSHOT_DEV or NEXT_PUBLIC_LIVE_WRITE_STATIC_SNAPSHOT_DEV = 'true' to force write in dev
+    // - otherwise dev skips writing to avoid Next.js HMR full-page reloads.
     try {
-      const publicDir = path.join(process.cwd(), "public", "live", "snapshots");
-      await fs.promises.mkdir(publicDir, { recursive: true });
-      
-      // Extract filename from fileKey:
-      // - If it's a Figma URL like "https://www.figma.com/file/ABC123/Name", extract "ABC123"
-      // - If it's already just a key like "BO4SUjwC6DDP1zHCu1RcaJ", use it as-is
-      let safeName = fileKey;
-      if (fileKey.includes('/')) {
-        const parts = fileKey.split('/').filter(Boolean);
-        // Check if it looks like a Figma URL: [..., 'file', 'KEY', ...]
-        const fileIndex = parts.indexOf('file');
-        if (fileIndex >= 0 && parts.length > fileIndex + 1) {
-          safeName = parts[fileIndex + 1];
-        } else {
-          // Fallback: use last non-empty part
-          safeName = parts[parts.length - 1] || fileKey;
+      const writeInDev = String(process.env.LIVE_WRITE_SNAPSHOT_DEV || process.env.NEXT_PUBLIC_LIVE_WRITE_STATIC_SNAPSHOT_DEV || '').toLowerCase() === 'true';
+      if (process.env.NODE_ENV === 'production' || writeInDev) {
+        const publicDir = path.join(process.cwd(), "public", "live", "snapshots");
+        await fs.promises.mkdir(publicDir, { recursive: true });
+        
+        // Extract filename from fileKey:
+        // - If it's a Figma URL like "https://www.figma.com/file/ABC123/Name", extract "ABC123"
+        // - If it's already just a key like "BO4SUjwC6DDP1zHCu1RcaJ", use it as-is
+        let safeName = fileKey;
+        if (fileKey.includes('/')) {
+          const parts = fileKey.split('/').filter(Boolean);
+          // Check if it looks like a Figma URL: [..., 'file', 'KEY', ...]
+          const fileIndex = parts.indexOf('file');
+          if (fileIndex >= 0 && parts.length > fileIndex + 1) {
+            safeName = parts[fileIndex + 1];
+          } else {
+            // Fallback: use last non-empty part
+            safeName = parts[parts.length - 1] || fileKey;
+          }
         }
+        const outPath = path.join(publicDir, `${safeName}.json`);
+        const payload = {
+          version: snap.version,
+          payload: { roots: mappedRoots, manifest: mergedManifest, refW: Math.round(refW), refH: Math.round(refH), interactions, focusFrameId: focusFrameId ?? null },
+        };
+        await fs.promises.writeFile(outPath, JSON.stringify(payload, null, 2), "utf8");
+        console.info(`[PUBLISH] Wrote static snapshot to ${outPath} (version ${snap.version}, ${mappedRoots.length} roots)`);
+      } else {
+        console.info("[PUBLISH] Dev mode: skipping static snapshot write to avoid HMR reload (enable with LIVE_WRITE_SNAPSHOT_DEV=true)");
       }
-      const outPath = path.join(publicDir, `${safeName}.json`);
-      const payload = {
-        version: snap.version,
-        payload: { roots: mappedRoots, manifest: mergedManifest, refW: Math.round(refW), refH: Math.round(refH), interactions, focusFrameId: focusFrameId ?? null },
-      };
-      await fs.promises.writeFile(outPath, JSON.stringify(payload, null, 2), "utf8");
-      console.info(`[PUBLISH] Wrote static snapshot to ${outPath} (version ${snap.version}, ${mappedRoots.length} roots)`);
     } catch (e: any) {
-      console.error("[PUBLISH] Failed to write static snapshot file:", e?.message || String(e));
+      console.error("[PUBLISH] Failed during static snapshot step:", e?.message || String(e));
     }
 
     const result = {

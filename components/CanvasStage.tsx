@@ -1512,7 +1512,46 @@ export default function CanvasStage(props: {
     if (componentData) {
       try {
         const parsed = JSON.parse(componentData);
-        // Support { type, name, width, height, fill, ... } structure
+        // If payload points to an existing node id, move that node from its parent into the drop target
+        if (parsed.existingId) {
+          // Remove the node from its current location
+          const { roots: withoutNode, removed } = removeNodeById(rawRoots, String(parsed.existingId));
+          if (removed) {
+            // Determine target parent (frame) under drop position
+            let targetParentId: string | null = null;
+            for (let i = drawableNodes.length - 1; i >= 0; i--) {
+              const n = drawableNodes[i];
+              if ((n.type || '').toUpperCase() === 'FRAME' && wx >= n.x && wx <= n.x + n.width && wy >= n.y && wy <= n.y + n.height) {
+                targetParentId = n.id; break;
+              }
+            }
+            if (!targetParentId && selectedFrame?.id) targetParentId = selectedFrame.id;
+
+            // Adjust coordinates relative to new parent
+            if (targetParentId) {
+              const parentNode = drawableNodes.find(n => n.id === targetParentId);
+              if (parentNode) {
+                (removed as any).x = wx - parentNode.x;
+                (removed as any).y = wy - parentNode.y;
+              }
+              const next = insertExistingNodeUnderParent(withoutNode, targetParentId, removed);
+              setRawRoots(next);
+              setSelectedIds(new Set([removed.id]));
+              requestRedraw();
+              console.log('[DROP] Moved node', removed.id, 'into', targetParentId);
+              return;
+            } else {
+              // Move to top-level
+              (removed as any).x = wx; (removed as any).y = wy;
+              setRawRoots([...(withoutNode || []), removed]);
+              setSelectedIds(new Set([removed.id]));
+              requestRedraw();
+              console.log('[DROP] Moved node', removed.id, 'to top-level');
+              return;
+            }
+          }
+        }
+        // Support { type, name, width, height, fill, ... } structure for creating a new node
         const id = `drop_${Date.now().toString(36)}`;
         newNode = {
           id,
@@ -1633,6 +1672,52 @@ function updateNodePositionsForInsert(roots: NodeInput[], parentId: string, newC
   const rec = (node: NodeInput): NodeInput => {
     if (node.id === parentId) {
       const children = Array.isArray(node.children) ? [...node.children, newChild] : [newChild];
+      return { ...node, children };
+    }
+    if (node.children && node.children.length) {
+      const nextChildren = node.children.map(rec);
+      if (nextChildren.some((c, i) => c !== node.children![i])) {
+        return { ...node, children: nextChildren };
+      }
+    }
+    return node;
+  };
+  return roots.map(rec);
+}
+
+// Helper: remove a node by id from the tree; returns new roots and the removed node (if any)
+function removeNodeById(roots: NodeInput[], id: string): { roots: NodeInput[]; removed: NodeInput | null } {
+  let removed: NodeInput | null = null;
+  const rec = (node: NodeInput): NodeInput | null => {
+    if (String(node.id) === String(id)) {
+      removed = node;
+      return null;
+    }
+    if (node.children && node.children.length) {
+      const nextChildren: NodeInput[] = [];
+      for (const c of node.children) {
+        const r = rec(c);
+        if (r) nextChildren.push(r);
+      }
+      if (nextChildren.length !== node.children.length) {
+        return { ...node, children: nextChildren } as NodeInput;
+      }
+    }
+    return node;
+  };
+  const nextRoots: NodeInput[] = [];
+  for (const r of roots) {
+    const out = rec(r);
+    if (out) nextRoots.push(out);
+  }
+  return { roots: nextRoots, removed };
+}
+
+// Helper: insert an existing node under a parent id; returns updated roots
+function insertExistingNodeUnderParent(roots: NodeInput[], parentId: string, nodeToInsert: NodeInput): NodeInput[] {
+  const rec = (node: NodeInput): NodeInput => {
+    if (node.id === parentId) {
+      const children = Array.isArray(node.children) ? [...node.children, nodeToInsert] : [nodeToInsert];
       return { ...node, children };
     }
     if (node.children && node.children.length) {

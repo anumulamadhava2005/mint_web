@@ -59,17 +59,26 @@
 .button {
   padding: 0.5rem 1rem;
   font-size: 0.875rem;
-  border-radius: 0.375rem;
-  transition: opacity 150ms ease, color 150ms ease, background-color 150ms ease;
+  border-radius: 0.5rem;
+  transition: transform 150ms ease, box-shadow 150ms ease, background-color 150ms ease, color 150ms ease;
+  font-weight: 600;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.08);
 }
 .buttonPrimary {
   background: var(--primary);
   color: var(--primary-foreground);
 }
-.buttonPrimary:hover { opacity: 0.9; }
+.buttonPrimary:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 12px 30px rgba(0,0,0,0.18);
+}
 
 .buttonGhost {
   color: var(--muted-foreground);
 }
 .buttonGhost:hover { color: var(--foreground); }
+.buttonGhost {
+  transition: transform 150ms ease, box-shadow 150ms ease, color 150ms ease;
+}
+.buttonGhost:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(0,0,0,0.08); }
 

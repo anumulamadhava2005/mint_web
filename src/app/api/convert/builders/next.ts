@@ -197,9 +197,22 @@ export function Box({ style, dataName, dataNodeId, text, isText, children, onCli
   }
   const textStyle: React.CSSProperties = { whiteSpace: "pre-wrap", wordBreak: "break-word", overflowWrap: "anywhere", maxWidth: "100%" };
   if (asButton) {
-    const btnStyle: React.CSSProperties = { ...outer, cursor: "pointer", background: (outer as any).background, border: (outer as any).border, borderRadius: (outer as any).borderRadius };
+    // Provide a consistent canvas-like button appearance via a class,
+    // but for TEXT nodes used as buttons we must not apply background/border.
+    const btnStyle: React.CSSProperties = { ...outer, cursor: "pointer", borderRadius: (outer as any).borderRadius };
+    if (!isText) {
+      (btnStyle as any).background = (outer as any).background;
+      (btnStyle as any).border = (outer as any).border;
+    } else {
+      // Ensure text-as-button does not carry background or border inline
+      delete (btnStyle as any).background;
+      delete (btnStyle as any).border;
+      delete (btnStyle as any).borderWidth;
+      delete (btnStyle as any).borderColor;
+      delete (btnStyle as any).borderStyle;
+    }
     return (
-      <button type="button" style={btnStyle} data-name={dataName} data-node-id={dataNodeId} aria-label={(text as any) || dataName} onClick={onClick}>
+      <button type="button" className="mint-button" data-is-text={isText ? "1" : undefined} style={btnStyle} data-name={dataName} data-node-id={dataNodeId} aria-label={(text as any) || dataName} onClick={onClick}>
         <div style={inner}>{isText && text ? <div style={textStyle}>{text}</div> : null}{children}</div>
       </button>
     );
@@ -361,8 +374,227 @@ export function LiveTree({ nodes, manifest, interactions, frameRoutes, nodeToFra
     }
   };
 
-  const render = (arr:any[], depth=0): React.ReactNode[] => arr.map((n, idx)=>{
+  // Component for infinite scroll containers that fetch data at runtime
+  function InfiniteScrollContainer({ node, depth, renderChildren }: { node: any; depth: number; renderChildren: (children: any[], depth: number, dataContext?: Record<string, unknown>) => React.ReactNode[] }) {
+    const [dataItems, setDataItems] = React.useState<any[]>([]);
+    const [rawJson, setRawJson] = React.useState<any>(null);
+    const [loading, setLoading] = React.useState(true);
+    const [error, setError] = React.useState<string | null>(null);
+
+    React.useEffect(() => {
+      const fetchData = async () => {
+        try {
+          const ds = node.dataSource;
+          if (!ds?.url) {
+            setLoading(false);
+            return;
+          }
+
+          // Build URL with params
+          let url = ds.url;
+          if (ds.params) {
+            try {
+              const params = JSON.parse(ds.params);
+              const searchParams = new URLSearchParams(params);
+              url += (url.includes('?') ? '&' : '?') + searchParams.toString();
+            } catch {}
+          }
+
+          // Build headers
+          const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+          if (ds.headers) {
+            try {
+              const parsed = JSON.parse(ds.headers);
+              Object.assign(headers, parsed);
+            } catch {}
+          }
+
+          const res = await fetch(url, { method: ds.method || 'GET', headers });
+          if (!res.ok) throw new Error(\`HTTP \${res.status}\`);
+          
+          const json = await res.json();
+          setRawJson(json);
+          
+          // Extract array from response
+          let items: any[] = [];
+          if (Array.isArray(json)) {
+            items = json;
+          } else if (typeof json === 'object' && json !== null) {
+            for (const key of Object.keys(json)) {
+              if (Array.isArray(json[key])) {
+                items = json[key];
+                break;
+              }
+            }
+          }
+          
+          setDataItems(items);
+        } catch (e: any) {
+          setError(e.message || 'Failed to fetch data');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      fetchData();
+    }, [node.dataSource?.url]);
+
+    const direction = node.dataSource?.direction || 'vertical';
+    const spacing = node.dataSource?.itemSpacing || 10;
+    
+    // Calculate item dimensions from children bounds
+    // Find the bounding box of all children (handling negative coordinates)
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    if (node.children?.length > 0) {
+      for (const child of node.children) {
+        const cx = child.x || 0;
+        const cy = child.y || 0;
+        const cw = child.w || child.width || 0;
+        const ch = child.h || child.height || 0;
+        minX = Math.min(minX, cx);
+        minY = Math.min(minY, cy);
+        maxX = Math.max(maxX, cx + cw);
+        maxY = Math.max(maxY, cy + ch);
+      }
+    }
+    
+    // Calculate item size based on children bounding box
+    const childrenWidth = maxX - minX;
+    const childrenHeight = maxY - minY;
+    const itemWidth = Math.max(childrenWidth, node.w || node.width || 100) + spacing;
+    const itemHeight = Math.max(childrenHeight, node.h || node.height || 100) + spacing;
+    
+    // Offset to normalize children positions (bring them to 0,0 origin)
+    const offsetX = minX < 0 ? -minX : 0;
+    const offsetY = minY < 0 ? -minY : 0;
+    
+    // Normalize children positions for rendering
+    const normalizedChildren = (node.children || []).map((child: any) => ({
+      ...child,
+      x: (child.x || 0) + offsetX,
+      y: (child.y || 0) + offsetY,
+    }));
+    
+    // Set up container style
+    const containerStyle: any = { 
+      position: 'absolute',
+      left: node.x,
+      top: node.y,
+      width: node.w || node.width,
+      height: node.h || node.height,
+      overflow: 'visible',
+      background: node.fill?.color || node.backgroundColor || 'transparent',
+    };
+    
+    // Add border if present
+    if (node.stroke?.weight) {
+      containerStyle.borderWidth = node.stroke.weight;
+      containerStyle.borderStyle = 'solid';
+      containerStyle.borderColor = node.stroke.color || '#000';
+    }
+    
+    // Expand container to fit all items
+    if (direction === 'vertical') {
+      const totalHeight = dataItems.length * itemHeight;
+      containerStyle.height = Math.max(containerStyle.height || 100, totalHeight);
+    } else {
+      const totalWidth = dataItems.length * itemWidth;
+      containerStyle.width = Math.max(containerStyle.width || 100, totalWidth);
+    }
+
+    if (loading) {
+      return <div style={containerStyle} data-name={node.name} data-node-id={node.id}><div style={{ padding: 16, color: '#666', fontFamily: 'system-ui' }}>Loading data...</div></div>;
+    }
+
+    if (error) {
+      return <div style={containerStyle} data-name={node.name} data-node-id={node.id}><div style={{ padding: 16, color: '#c00', fontFamily: 'system-ui' }}>Error: {error}</div></div>;
+    }
+
+    if (dataItems.length === 0) {
+      return <div style={containerStyle} data-name={node.name} data-node-id={node.id}><div style={{ padding: 16, color: '#666', fontFamily: 'system-ui' }}>No data</div></div>;
+    }
+
+    return (
+      <div style={containerStyle} data-name={node.name} data-node-id={node.id}>
+        {dataItems.map((dataItem: any, dataIdx: number) => {
+          const itemOffsetY = direction === 'vertical' ? dataIdx * itemHeight : 0;
+          const itemOffsetX = direction === 'horizontal' ? dataIdx * itemWidth : 0;
+          return (
+            <div key={\`\${node.id}-item-\${dataIdx}\`} style={{ position: 'absolute', left: itemOffsetX, top: itemOffsetY, width: itemWidth - spacing, height: itemHeight - spacing, overflow: 'visible' }}>
+              {renderChildren(normalizedChildren, depth + 1, { ...(dataItem || {}), item: dataItem, payload: rawJson })}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+  // Non-infinite data source: fetch once and pass payload to children
+  function DataSourceContainer({ node, depth, renderChildren }: { node: any; depth: number; renderChildren: (children: any[], depth: number, dataContext?: Record<string, unknown>) => React.ReactNode[] }) {
+    const [rawJson, setRawJson] = React.useState<any>(null);
+    const [loading, setLoading] = React.useState(true);
+    const [error, setError] = React.useState<string | null>(null);
+
+    React.useEffect(() => {
+      const fetchData = async () => {
+        try {
+          const ds = node.dataSource;
+          if (!ds?.url) { setLoading(false); return; }
+          let url = ds.url;
+          if (ds.params) {
+            try {
+              const params = JSON.parse(ds.params);
+              const searchParams = new URLSearchParams(params);
+              url += (url.includes('?') ? '&' : '?') + searchParams.toString();
+            } catch {}
+          }
+          const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+          if (ds.headers) { try { const parsed = JSON.parse(ds.headers); Object.assign(headers, parsed); } catch {} }
+          const res = await fetch(url, { method: ds.method || 'GET', headers });
+          if (!res.ok) throw new Error(\`HTTP ${'${'}res.status${'}'}\`);
+          const json = await res.json(); setRawJson(json);
+        } catch (e:any) { setError(e.message || 'Failed to fetch data'); }
+        finally { setLoading(false); }
+      };
+      fetchData();
+    }, [node.dataSource?.url]);
+
+    const containerStyle: any = {
+      position: 'absolute', left: node.x, top: node.y, width: node.w || node.width, height: node.h || node.height,
+      overflow: 'visible', background: node.fill?.color || node.backgroundColor || 'transparent'
+    };
+    if (node.stroke?.weight) { containerStyle.borderWidth = node.stroke.weight; containerStyle.borderStyle = 'solid'; containerStyle.borderColor = node.stroke.color || '#000'; }
+
+    if (loading) return <div style={containerStyle} data-name={node.name} data-node-id={node.id}><div style={{ padding: 16, color: '#666', fontFamily: 'system-ui' }}>Loading…</div></div>;
+    if (error) return <div style={containerStyle} data-name={node.name} data-node-id={node.id}><div style={{ padding: 16, color: '#c00', fontFamily: 'system-ui' }}>Error: {${'${'}error${'}'}}</div></div>;
+    return <div style={containerStyle} data-name={node.name} data-node-id={node.id}>{renderChildren(node.children || [], depth + 1, { payload: rawJson })}</div>;
+  }
+  // Helper: resolve dot/bracket paths from context
+  function getByPath(obj:any, path:string){
+    if (!obj || !path) return undefined;
+    const parts = path.replace(/\[(\d+)\]/g, '.$1').split('.');
+    let cur:any = obj;
+    for(const p of parts){ if (!p) continue; cur = (cur==null) ? undefined : cur[p]; }
+    return cur;
+  }
+  function renderTemplate(t:string, ctx:any){
+    if (!t || typeof t !== 'string') return t;
+    return t.replace(/{{\s*([^}]+)\s*}}/g, (_, expr)=>{
+      const v = getByPath(ctx, String(expr || '').trim());
+      return v == null ? '' : String(v);
+    });
+  }
+
+  const render = (arr:any[], depth=0, dataContext?: Record<string, unknown>): React.ReactNode[] => arr.map((n, idx)=>{
     const kind = nodeKind(n);
+    
+    // Handle infinite and non-infinite data sources
+    if (n.dataSource?.infiniteScroll && n.dataSource?.url && n.children?.length) {
+      return <InfiniteScrollContainer key={n.id||\`\${depth}-\${idx}\`} node={n} depth={depth} renderChildren={render} />;
+    }
+    if (n.dataSource && !n.dataSource.infiniteScroll && n.dataSource.url && n.children?.length) {
+      return <DataSourceContainer key={n.id||\`\${depth}-\${idx}\`} node={n} depth={depth} renderChildren={render} />;
+    }
+    
     if (n.children?.length){
       const wrapStyle = cssFromNode(n);
       // Ensure top-level frame anchors at (0,0)
@@ -380,7 +612,7 @@ export function LiveTree({ nodes, manifest, interactions, frameRoutes, nodeToFra
           return (
             <Box key={n.id||\`\${depth}-\${idx}\`} style={wrapStyle} dataName={n.name} dataNodeId={n.id} text={""} isText={false} onClick={hasClick ? onClickForNode(n.id) : undefined} asButton={hasClick}>
           {bg}
-          {render(n.children, depth+1)}
+          {render(n.children, depth+1, dataContext)}
         </Box>
       );
     }
@@ -399,7 +631,21 @@ export function LiveTree({ nodes, manifest, interactions, frameRoutes, nodeToFra
     }
     const style = cssFromNode(n);
     if (depth === 0) { (style as any).left = 0; (style as any).top = 0; }
-    const text = String(n.type||"").toUpperCase()==="TEXT" ? (n.text?.characters ?? n.textRaw ?? "") : "";
+    
+    // Handle data binding for text nodes + template replacement
+    let text = String(n.type||"").toUpperCase()==="TEXT" ? (n.text?.characters ?? n.textRaw ?? "") : "";
+    if (dataContext) {
+      if (n.dataBinding?.field) {
+        const boundValue = getByPath(dataContext, n.dataBinding.field);
+        if (boundValue !== undefined) {
+          text = String(boundValue);
+        }
+      }
+      if (text && text.includes('{{')) {
+        text = renderTemplate(text, dataContext);
+      }
+    }
+    
     const isText = String(n.type||"").toUpperCase()==="TEXT";
     const list = interactionsBySource.get(n.id)||[];
     const hasClick = list.some((it:any)=>!it.trigger || it.trigger==="onClick");

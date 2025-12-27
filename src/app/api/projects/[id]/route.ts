@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import zlib from 'zlib';
 
 const MINTIT_API_BASE = 'https://api.mintit.pro';
 const USER_ID = '9198e3fb-4c22-11f0-906d-080027fda028';
@@ -26,7 +27,21 @@ async function proxyToMintit(
   };
 
   if (body && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
-    requestOptions.body = JSON.stringify(body);
+    const raw = JSON.stringify(body);
+    // If payload is large, gzip it before proxying to reduce size over the wire.
+    try {
+      if (raw.length > 1024 * 1024) {
+        const gz = zlib.gzipSync(Buffer.from(raw, 'utf8'));
+        requestOptions.body = new Uint8Array(gz);
+        // indicate to upstream that we gzipped the payload
+        (requestOptions.headers as Record<string, string>)['Content-Encoding'] = 'gzip';
+      } else {
+        requestOptions.body = raw;
+      }
+    } catch (e) {
+      // fallback to plain JSON if compression fails
+      requestOptions.body = raw;
+    }
   }
 
   try {

@@ -1234,22 +1234,234 @@ function HomePage() {
       // Require an open project (loaded via hash navigation)
       const hash = window.location.hash || "";
       const isProject = hash.startsWith('#project=');
+      let projectId = isProject ? hash.replace('#project=', '') : '';
       if (!isProject) {
-        alert('Open a project from Projects first to use Commit.');
-        return;
+        // Fallback: try sessionStorage cache
+        try {
+          const cached = sessionStorage.getItem('currentProject');
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed && parsed.id) {
+              projectId = String(parsed.id);
+            }
+          }
+        } catch {}
+        if (!projectId) {
+          alert('Open a project from Projects first to use Commit.');
+          return;
+        }
       }
-      const projectId = hash.replace('#project=', '');
 
       if (!rawRoots || rawRoots.length === 0) {
         alert('Nothing to save: no frames/nodes loaded.');
         return;
       }
 
+      // Helper to normalize positions relative to parent
+      // Root frames get (0,0), children positions are relative to their parent
+      function normalizePositions(nodes: any[], parentX = 0, parentY = 0, isRoot = true): any[] {
+        return nodes.map(node => {
+          const normalized = { ...node };
+          
+          // Get current absolute position (prefer ax/ay if present)
+          const absX = Number(node.ax ?? node.absoluteBoundingBox?.x ?? node.x ?? 0);
+          const absY = Number(node.ay ?? node.absoluteBoundingBox?.y ?? node.y ?? 0);
+          
+          if (isRoot) {
+            // Root frames always start at (0, 0)
+            normalized.x = 0;
+            normalized.y = 0;
+          } else {
+            // Children positions are relative to parent
+            normalized.x = absX - parentX;
+            normalized.y = absY - parentY;
+          }
+          
+          // Recursively process children with this node's absolute position as the parent reference
+          if (normalized.children && Array.isArray(normalized.children)) {
+            normalized.children = normalizePositions(normalized.children, absX, absY, false);
+          }
+          
+          return normalized;
+        });
+      }
+
+      // Helper to strip large data (lastResponse) from nodes before sending to server
+      // This prevents 413 PayloadTooLarge errors
+      function stripLargeData(nodes: any[]): any[] {
+        return nodes.map((node) => {
+          const stripped: any = { ...node };
+
+          // Remove large dataSource payloads that are not needed for publish
+          if (stripped.dataSource && typeof stripped.dataSource === 'object') {
+            stripped.dataSource = { ...stripped.dataSource };
+            delete stripped.dataSource.lastResponse;
+            delete stripped.dataSource.raw;
+          }
+
+          // Drop embedded image data URIs or internal image blobs
+          if (stripped.fill && typeof stripped.fill === 'object') {
+            try {
+              delete stripped.fill.imageRef;
+              if (typeof stripped.fill.src === 'string' && stripped.fill.src.startsWith('data:')) {
+                stripped.fill.src = null;
+              }
+            } catch (e) {
+              // ignore
+            }
+          }
+
+          // Remove bulky, non-essential runtime metadata
+          delete stripped.absoluteBoundingBox;
+          delete stripped.raw;
+          delete stripped.lastResponse;
+          delete stripped.remoteData;
+          // effects & stroke often contain redundant rendering metadata
+          if (stripped.effects) delete stripped.effects;
+          if (stripped.stroke && Object.keys(stripped.stroke).length === 0) delete stripped.stroke;
+
+          // Trim very long text blobs to a reasonable size
+          if (typeof stripped.textRaw === 'string' && stripped.textRaw.length > 2000) {
+            stripped.textRaw = stripped.textRaw.slice(0, 2000);
+          }
+
+          // Recursively process children
+          if (stripped.children && Array.isArray(stripped.children)) {
+            stripped.children = stripLargeData(stripped.children);
+          }
+
+          return stripped;
+        });
+      }
+
+      // Ensure we have consistent absolute coords (ax/ay) built from local x/y when available.
+      function ensureAbsolutePositions(nodes: any[], parentAx = 0, parentAy = 0, parentW = 0, parentH = 0) {
+        return nodes.map((n: any) => {
+          const copy = { ...n };
+          const nodeHasLocal = copy.x != null && copy.y != null;
+          const candidateFromLocalAx = nodeHasLocal ? Number(parentAx) + Number(copy.x) : undefined;
+          const candidateFromLocalAy = nodeHasLocal ? Number(parentAy) + Number(copy.y) : undefined;
+          const candidateFromAx = copy.ax != null ? Number(copy.ax) : undefined;
+
+          // Helper to test if a candidate absolute X/Y falls inside parent bounds (with some slack)
+          const insideParent = (absX: number | undefined, absY: number | undefined) => {
+            if (absX == null || absY == null) return false;
+            const slack = 4; // small tolerance
+            const left = parentAx - slack;
+            const top = parentAy - slack;
+            const right = parentAx + (parentW || 0) + slack;
+            const bottom = parentAy + (parentH || 0) + slack;
+            return absX >= left && absX <= right && absY >= top && absY <= bottom;
+          };
+
+          let finalAx: number | undefined = undefined;
+          let finalAy: number | undefined = undefined;
+
+          // Prefer local-based candidate if it lands inside parent's bounds
+          if (candidateFromLocalAx != null && candidateFromLocalAy != null && insideParent(candidateFromLocalAx, candidateFromLocalAy)) {
+            finalAx = candidateFromLocalAx;
+            finalAy = candidateFromLocalAy;
+          } else if (candidateFromAx != null) {
+            // fallback to using existing ax/ay when local coords don't look local
+            finalAx = Number(candidateFromAx);
+            finalAy = Number(copy.ay ?? parentAy ?? 0);
+          } else if (candidateFromLocalAx != null && candidateFromLocalAy != null) {
+            // use local as last resort
+            finalAx = candidateFromLocalAx;
+            finalAy = candidateFromLocalAy;
+          } else {
+            finalAx = Number(copy.ax ?? parentAx ?? 0);
+            finalAy = Number(copy.ay ?? parentAy ?? 0);
+          }
+
+          // Assign computed absolute coordinates to the copy so downstream
+          // normalization and snapshot builders have consistent ax/ay values.
+          copy.ax = Number(finalAx ?? 0);
+          copy.ay = Number(finalAy ?? 0);
+
+          // Do NOT overwrite stored ax/ay on the node; keep original absolute values intact.
+          // Use computed finalAx/finalAy for child recursion but don't assign them back to node.ax/node.ay.
+
+          // Pass down width/height to help children inside-parent checks
+          const childParentW = Number(copy.w ?? copy.width ?? 0);
+          const childParentH = Number(copy.h ?? copy.height ?? 0);
+
+          if (copy.children && Array.isArray(copy.children)) {
+            copy.children = ensureAbsolutePositions(copy.children, finalAx, finalAy, childParentW, childParentH);
+          }
+          return copy;
+        });
+      }
+
+      const absFixedRoots = ensureAbsolutePositions(rawRoots);
+      // Normalize per-top-level root: treat each root's origin as (0,0)
+      function normalizeRootAndChildren(root: any) {
+        const copy = { ...root };
+        const rootAx = Number(root.ax ?? root.x ?? 0);
+        const rootAy = Number(root.ay ?? root.y ?? 0);
+        copy.x = 0;
+        copy.y = 0;
+
+        function normChildren(node: any, parentAx: number, parentAy: number) {
+          if (!node.children || !Array.isArray(node.children)) return;
+          node.children = node.children.map((c: any) => {
+            const child = { ...c };
+            const absX = Number(child.ax ?? child.x ?? 0);
+            const absY = Number(child.ay ?? child.y ?? 0);
+            child.x = Math.round(absX - parentAx);
+            child.y = Math.round(absY - parentAy);
+            if (child.children && Array.isArray(child.children)) {
+              normChildren(child, absX, absY);
+            }
+            return child;
+          });
+        }
+
+        normChildren(copy, rootAx, rootAy);
+        // ensure widths/heights are set
+        copy.w = copy.w ?? copy.width;
+        copy.h = copy.h ?? copy.height;
+        return copy;
+      }
+
+      const normalizedRoots = absFixedRoots.map(r => normalizeRootAndChildren(r));
+
+      // Restore original ax/ay values from the editor rawRoots where possible.
+      // Build a map of original nodes by id to copy absolute coordinates back into the normalized tree.
+      const originalById = new Map<string, any>();
+      function collectOriginals(arr: any[]) {
+        for (const n of arr || []) {
+          if (n && n.id) originalById.set(String(n.id), n);
+          if (n.children && Array.isArray(n.children)) collectOriginals(n.children);
+        }
+      }
+      collectOriginals(rawRoots || []);
+
+      function restoreAxAy(normalized: any) {
+        if (!normalized) return normalized;
+        const copy = { ...normalized };
+        // Restore original ax/ay values from the editor rawRoots when available.
+        // This ensures the published snapshot preserves the editor's absolute
+        // coordinates instead of any intermediate computed values.
+        const orig = originalById.get(String(copy.id));
+        if (orig) {
+          if (orig.ax != null) copy.ax = orig.ax;
+          if (orig.ay != null) copy.ay = orig.ay;
+        }
+        if (copy.children && Array.isArray(copy.children)) {
+          copy.children = copy.children.map((c: any) => restoreAxAy(c));
+        }
+        return copy;
+      }
+
+      const restoredRoots = normalizedRoots.map(r => restoreAxAy(r));
+      const strippedRoots = stripLargeData(restoredRoots);
+
       // Build update payload matching existing API usage
       const updateBody: any = {
         name: fileName || undefined,
         fileKey: lastFileKey || undefined,
-        rawRoots: rawRoots,
+        rawRoots: strippedRoots,
         frameCount: rawRoots.length,
       };
 
@@ -1259,7 +1471,7 @@ function HomePage() {
   updateBody.interactions = interactions;
       updateBody.updatedAt = new Date().toISOString();
 
-      const res = await fetch(`/api/projects/${projectId}`, {
+      const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updateBody),
@@ -1270,7 +1482,8 @@ function HomePage() {
       try { json = text ? JSON.parse(text) : null; } catch { /* ignore */ }
 
       if (!res.ok) {
-        const msg = json?.error || text || `Failed to save project (${res.status})`;
+        const details = Array.isArray(json?.details) ? `\n- ${json.details.join('\n- ')}` : '';
+        const msg = (json?.error || text || `Failed to save project (${res.status})`) + details;
         throw new Error(msg);
       }
 
@@ -1327,7 +1540,7 @@ function HomePage() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               fileKey: lastFileKey,
-              roots: rawRoots,
+              roots: strippedRoots,
               manifest: {},
               refW,
               refH,
@@ -1594,6 +1807,7 @@ function HomePage() {
             onUpdateSelected={updateSelected}
             onImageChange={(id, url) => handleImageChange(id, url)}
             onClose={() => setSelectedIds(new Set())}
+            rawRoots={rawRoots}
           />
         )}
       </div>

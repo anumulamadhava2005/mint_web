@@ -93,7 +93,7 @@ export function drawNodes(
   images?: Record<string, HTMLImageElement | string>
 ) {
   // Helper to find the raw node by id
-  function findRaw(id: string) {
+  function findRaw(id: string): NodeInput | undefined {
     if (!rawRoots) return undefined;
     const stack = [...rawRoots];
     while (stack.length) {
@@ -127,6 +127,33 @@ export function drawNodes(
     return !!(rawNode && rawNode.children && rawNode.children.length > 0);
   }
 
+  // Helper to get data array from infinite scroll node
+  function getInfiniteScrollData(rawNode: NodeInput | undefined): unknown[] {
+    if (!rawNode?.dataSource?.infiniteScroll || !rawNode.dataSource.lastResponse) {
+      return [];
+    }
+    const response = rawNode.dataSource.lastResponse;
+    if (Array.isArray(response)) {
+      return response;
+    }
+    // If response is an object with an array property, find it
+    if (typeof response === 'object' && response !== null) {
+      for (const key of Object.keys(response)) {
+        if (Array.isArray((response as Record<string, unknown>)[key])) {
+          return (response as Record<string, unknown>)[key] as unknown[];
+        }
+      }
+    }
+    return [];
+  }
+
+  // Helper to get bound value for a data binding
+  function getBoundValue(dataBinding: { field: string; parentId: string; type: string } | null | undefined, dataItem: Record<string, unknown>): string | null {
+    if (!dataBinding || !dataItem) return null;
+    const value = dataItem[dataBinding.field];
+    return value !== undefined ? String(value) : null;
+  }
+
   // Simple word-wrap helper
   function wrapAndDrawText(
     ctx2: CanvasRenderingContext2D,
@@ -152,6 +179,41 @@ export function drawNodes(
     }
     if (line) ctx2.fillText(line, x, cy);
     return cy + lineH; // bottom Y of the block
+  }
+
+  // Build a map of nodes with infinite scroll and their expanded children
+  const infiniteScrollExpansions = new Map<string, { dataItems: unknown[], itemHeight: number, direction: 'vertical' | 'horizontal' }>();
+  
+  // Find nodes with infinite scroll enabled
+  for (const n of drawableNodes) {
+    const rawNode = findRaw(n.id);
+    if (rawNode?.dataSource?.infiniteScroll) {
+      const dataItems = getInfiniteScrollData(rawNode);
+      if (dataItems.length > 0) {
+        // Calculate item height based on children bounds + spacing
+        const spacing = rawNode.dataSource.itemSpacing || 10;
+        let itemHeight = n.height;
+        let itemWidth = n.width;
+        if (rawNode.children && rawNode.children.length > 0) {
+          // Find the bounding box of children
+          let maxChildBottom = 0;
+          let maxChildRight = 0;
+          for (const child of rawNode.children) {
+            const childBottom = (child.y || 0) + (child.height || 0);
+            const childRight = (child.x || 0) + (child.width || 0);
+            if (childBottom > maxChildBottom) maxChildBottom = childBottom;
+            if (childRight > maxChildRight) maxChildRight = childRight;
+          }
+          itemHeight = maxChildBottom + spacing;
+          itemWidth = maxChildRight + spacing;
+        }
+        infiniteScrollExpansions.set(n.id, {
+          dataItems,
+          itemHeight: rawNode.dataSource.direction === 'horizontal' ? itemWidth : itemHeight,
+          direction: rawNode.dataSource.direction || 'vertical'
+        });
+      }
+    }
   }
 
   drawableNodes.forEach((n) => {
@@ -504,6 +566,137 @@ export function drawNodes(
         }
         
         wrapAndDrawText(ctx, chars, startX, startY, maxW, lineH);
+      }
+    }
+
+    // --- Infinite Scroll Rendering ---
+    // After rendering the container, render repeated children for each data item
+    const expansion = infiniteScrollExpansions.get(n.id);
+    if (expansion && expansion.dataItems.length > 0) {
+      const rawNode = findRaw(n.id);
+      if (rawNode?.children && rawNode.children.length > 0) {
+        const { dataItems, itemHeight, direction } = expansion;
+        const itemsToRender = dataItems; // Render all items (can limit if needed)
+        
+        // Draw a visual indicator for infinite scroll
+        ctx.save();
+        ctx.strokeStyle = "#8b5cf6"; // purple indicator
+        ctx.lineWidth = 2 * scale;
+        ctx.setLineDash([4, 4]);
+        ctx.strokeRect(x, y, w, h + (itemsToRender.length - 1) * itemHeight * scale);
+        ctx.setLineDash([]);
+        
+        // Draw badge
+        ctx.fillStyle = "#8b5cf6";
+        ctx.font = `${11 * scale}px system-ui`;
+        ctx.textAlign = "left";
+        ctx.textBaseline = "top";
+        ctx.fillText(`Infinite Scroll (${itemsToRender.length}/${dataItems.length} items)`, x + 4, y - 16 * scale);
+        ctx.restore();
+        
+        // Render children for each data item
+        for (let dataIdx = 0; dataIdx < itemsToRender.length; dataIdx++) {
+          const dataItem = itemsToRender[dataIdx] as Record<string, unknown>;
+          
+          // Calculate offset for this data item
+          const offsetY = direction === 'vertical' ? dataIdx * itemHeight : 0;
+          const offsetX = direction === 'horizontal' ? dataIdx * itemHeight : 0;
+          
+          // Render each child with the data binding
+          for (const child of rawNode.children) {
+            const childX = x + ((child.x || 0) + offsetX) * scale;
+            const childY = y + ((child.y || 0) + offsetY) * scale;
+            const childW = (child.width || 50) * scale;
+            const childH = (child.height || 20) * scale;
+            
+            const childType = (child.type || '').toUpperCase();
+            const isChildText = childType === 'TEXT';
+            
+            ctx.save();
+            
+            // Apply child rotation if present
+            if (child.rotation != null && child.rotation !== 0) {
+              const centerX = childX + childW / 2;
+              const centerY = childY + childH / 2;
+              ctx.translate(centerX, centerY);
+              ctx.rotate((child.rotation * Math.PI) / 180);
+              ctx.translate(-centerX, -centerY);
+            }
+            
+            // Draw child background (for non-text nodes)
+            if (!isChildText) {
+              if ((child as any).backgroundColor) {
+                ctx.fillStyle = (child as any).backgroundColor;
+              } else if (child.fill?.type === 'SOLID' && child.fill.color) {
+                ctx.fillStyle = child.fill.color;
+              } else {
+                ctx.fillStyle = 'transparent';
+              }
+              
+              const childRadius = child.corners?.uniform || 0;
+              if (childRadius > 0) {
+                ctx.beginPath();
+                if ((ctx as any).roundRect) {
+                  (ctx as any).roundRect(childX, childY, childW, childH, childRadius * scale);
+                }
+                ctx.fill();
+                if (child.stroke) {
+                  ctx.strokeStyle = child.stroke.color || '#3b82f6';
+                  ctx.lineWidth = (child.stroke.weight || 1) * scale;
+                  ctx.stroke();
+                }
+              } else {
+                ctx.fillRect(childX, childY, childW, childH);
+                if (child.stroke) {
+                  ctx.strokeStyle = child.stroke.color || '#3b82f6';
+                  ctx.lineWidth = (child.stroke.weight || 1) * scale;
+                  ctx.strokeRect(childX, childY, childW, childH);
+                }
+              }
+            }
+            
+            // Draw child text with data binding
+            if (isChildText && child.text) {
+              const t = child.text;
+              const fam = t.fontFamily || 'system-ui';
+              const basePx = t.fontSize || 14;
+              const scaledPx = basePx * scale;
+              
+              ctx.fillStyle = t.color || '#333';
+              const fontStyle = t.fontStyle || '';
+              const isBold = fontStyle.toLowerCase().includes('bold');
+              const isItalic = fontStyle.toLowerCase().includes('italic');
+              const weight = isBold ? 'bold' : 'normal';
+              const style = isItalic ? 'italic' : 'normal';
+              ctx.font = `${style} ${weight} ${scaledPx}px ${fam}`;
+              
+              const textAlignH = t.textAlignHorizontal || 'LEFT';
+              ctx.textAlign = textAlignH === 'CENTER' ? 'center' : textAlignH === 'RIGHT' ? 'right' : 'left';
+              ctx.textBaseline = 'top';
+              
+              // Get text content - use bound value or original text
+              let textContent = t.characters || '';
+              if (child.dataBinding?.field) {
+                const boundValue = getBoundValue(child.dataBinding, dataItem);
+                if (boundValue !== null) {
+                  textContent = boundValue;
+                }
+              }
+              
+              let textX = childX;
+              if (textAlignH === 'CENTER') {
+                textX = childX + childW / 2;
+              } else if (textAlignH === 'RIGHT') {
+                textX = childX + childW;
+              }
+              
+              const lineH = scaledPx * 1.2;
+              wrapAndDrawText(ctx, textContent, textX, childY, childW, lineH);
+            }
+            
+            ctx.restore();
+          }
+        }
       }
     }
   });

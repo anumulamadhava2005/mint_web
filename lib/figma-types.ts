@@ -44,6 +44,19 @@ export type TextStyle = {
   paragraphIndent?: number | null;
 } | null;
 
+export type DataSourceConfig = {
+  url: string;
+  method: "GET" | "POST" | "PUT" | "DELETE";
+  headers?: string;
+  params?: string;
+  selectedFields?: string[];
+  lastResponse?: unknown;
+  // Infinite scroll settings
+  infiniteScroll?: boolean;
+  itemSpacing?: number;
+  direction?: "vertical" | "horizontal";
+};
+
 export type NodeInput = {
   id: string;
   name: string;
@@ -68,6 +81,16 @@ export type NodeInput = {
   clipsContent?: boolean | null;
   fills?: FillStyle[] | null;
   strokes?: StrokeStyle[] | null;
+  // Data source for backend integration
+  dataSource?: DataSourceConfig | null;
+  // Data binding for text fields
+  dataBinding?: DataBindingConfig | null;
+};
+
+export type DataBindingConfig = {
+  field: string;
+  parentId: string;
+  type: 'field' | 'custom';
 };
 
 export type DrawableNode = {
@@ -92,6 +115,10 @@ export type DrawableNode = {
   clipsContent?: boolean | null;
   fills?: FillStyle[] | null;
   strokes?: StrokeStyle[] | null;
+  // Data source for backend integration
+  dataSource?: DataSourceConfig | null;
+  // Data binding for text fields
+  dataBinding?: DataBindingConfig | null;
 };
 
 export type ReferenceFrame = {
