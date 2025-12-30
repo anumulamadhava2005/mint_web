@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState, useCallback, useLayoutEffect } fr
 import styles from "./css/CanvasStage.module.css"
 import type { DrawableNode, NodeInput, ReferenceFrame } from "../lib/figma-types"
 import { drawGrid, drawNodes, drawReferenceFrameOverlay } from "../lib/ccanvas-draw-bridge"
+import { useSnapping } from "../lib/snapping/useSnapping"
+import type { SnapTarget, SnapGuide } from "../lib/snapping/SnappingEngine"
 import AuthRedirect from "./AuthRedirect"
 // Type Definitions
 type ImageLike = HTMLImageElement | string
@@ -106,6 +108,19 @@ export default function CanvasStage(props: {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const overlayRef = useRef<HTMLCanvasElement>(null)
   const [viewportSize, setViewportSize] = useState({ width: 1280, height: 800 })
+  
+  // Initialize snapping engine
+  const snapping = useSnapping({
+    enabled: true,
+    enableGrid: true,
+    gridSize: 8,
+    enableSiblingEdges: true,
+    enableSiblingCenters: true,
+    enableFrameEdges: true,
+    enableFrameCenter: true,
+    threshold: 8,
+  })
+  
   // State management refs
   const stateRef = useRef({
     scale,
@@ -118,6 +133,7 @@ export default function CanvasStage(props: {
       verticalLines: [] as Array<{ x: number; parentX: number; parentY: number; parentW: number; parentH: number }>, 
       horizontalLines: [] as Array<{ y: number; parentX: number; parentY: number; parentW: number; parentH: number }> 
     },
+    snapGuides: [] as SnapGuide[],
     drawableNodes,
     rawRoots,
     interactions,
@@ -420,6 +436,42 @@ export default function CanvasStage(props: {
         })
         
         octx.setLineDash([])
+      }
+      
+      // Draw snap guides from SnappingEngine
+      const snapGuides = stateRef.current.snapGuides || [];
+      if (snapGuides.length > 0) {
+        octx.save();
+        octx.strokeStyle = "rgba(236, 72, 153, 0.9)"; // Pink color for snap guides
+        octx.lineWidth = 1;
+        octx.setLineDash([4, 2]);
+        
+        snapGuides.forEach(guide => {
+          const position = guide.position;
+          
+          if (guide.orientation === 'vertical') {
+            // Vertical line (snap on x-axis)
+            const sx = offset.x + position * scale;
+            const startY = offset.y + guide.start * scale;
+            const endY = offset.y + guide.end * scale;
+            octx.beginPath();
+            octx.moveTo(sx, startY);
+            octx.lineTo(sx, endY);
+            octx.stroke();
+          } else {
+            // Horizontal line (snap on y-axis)
+            const sy = offset.y + position * scale;
+            const startX = offset.x + guide.start * scale;
+            const endX = offset.x + guide.end * scale;
+            octx.beginPath();
+            octx.moveTo(startX, sy);
+            octx.lineTo(endX, sy);
+            octx.stroke();
+          }
+        });
+        
+        octx.setLineDash([]);
+        octx.restore();
       }
 
       // Draw interaction arrows
@@ -1312,10 +1364,6 @@ export default function CanvasStage(props: {
           const dx = sxDelta / currentScale;
           const dy = syDelta / currentScale;
           
-          const guides = { 
-            verticalLines: [] as Array<{ x: number; parentX: number; parentY: number; parentW: number; parentH: number }>, 
-            horizontalLines: [] as Array<{ y: number; parentX: number; parentY: number; parentW: number; parentH: number }> 
-          };
           let finalDx = dx, finalDy = dy;
           const primaryNodeId = originalPositions.current.keys().next().value;
           
@@ -1323,55 +1371,71 @@ export default function CanvasStage(props: {
               const node = nodeMap.get(primaryNodeId)!;
               const originalPos = originalPositions.current.get(primaryNodeId)!;
               
-              // Get ONLY the immediate parent, not grandparents
+              // Get the immediate parent for snapping context
               const parentId = childToParentMap.get(primaryNodeId);
               const parent = parentId ? nodeMap.get(parentId) : null;
               
+              // Build snap targets from siblings
+              const siblings: SnapTarget[] = [];
               if (parent) {
-                  // Calculate the center of the dragged node (after movement)
-                  const nodeCenterX = originalPos.x + dx + node.width / 2;
-                  const nodeCenterY = originalPos.y + dy + node.height / 2;
-                  
-                  // Calculate the center of the IMMEDIATE parent node
-                  const parentCenterX = parent.x + parent.width / 2;
-                  const parentCenterY = parent.y + parent.height / 2;
-                  
-                  // Snap horizontally when close to immediate parent center
-                  const hDist = Math.abs(nodeCenterX - parentCenterX);
-                  if (hDist < ALIGNMENT_THRESHOLD) {
-                      // Snap to immediate parent center
-                      finalDx = parentCenterX - node.width / 2 - originalPos.x;
-                      guides.verticalLines.push({ 
-                        x: parentCenterX,
-                        parentX: parent.x,
-                        parentY: parent.y,
-                        parentW: parent.width,
-                        parentH: parent.height
+                const parentRaw = parent.raw;
+                parentRaw?.children?.forEach((child: NodeInput) => {
+                  if (child.id !== primaryNodeId) {
+                    const childDrawable = nodeMap.get(child.id);
+                    if (childDrawable) {
+                      siblings.push({
+                        id: child.id,
+                        bounds: {
+                          x: childDrawable.x,
+                          y: childDrawable.y,
+                          width: childDrawable.width,
+                          height: childDrawable.height,
+                        },
+                        isFrame: childDrawable.type === 'FRAME',
+                        isParent: false,
                       });
+                    }
                   }
-                  
-                  // Snap vertically when close to immediate parent center
-                  const vDist = Math.abs(nodeCenterY - parentCenterY);
-                  if (vDist < ALIGNMENT_THRESHOLD) {
-                      // Snap to immediate parent center
-                      finalDy = parentCenterY - node.height / 2 - originalPos.y;
-                      guides.horizontalLines.push({ 
-                        y: parentCenterY,
-                        parentX: parent.x,
-                        parentY: parent.y,
-                        parentW: parent.width,
-                        parentH: parent.height
-                      });
-                  }
+                });
+                
+                // Set parent bounds for frame snapping
+                snapping.setParentBounds({
+                  x: parent.x,
+                  y: parent.y,
+                  width: parent.width,
+                  height: parent.height,
+                });
+              } else {
+                snapping.setParentBounds(null);
               }
+              
+              snapping.setTargets(siblings);
+              
+              // Proposed new position
+              const proposedX = originalPos.x + dx;
+              const proposedY = originalPos.y + dy;
+              
+              // Use snapping engine for intelligent snapping
+              const snapResult = snapping.snap(
+                primaryNodeId,
+                { x: node.x, y: node.y, width: node.width, height: node.height },
+                proposedX,
+                proposedY
+              );
+              
+              // Apply snapped deltas
+              finalDx = snapResult.snappedX - originalPos.x;
+              finalDy = snapResult.snappedY - originalPos.y;
+              
+              // Store snap guides for rendering
+              stateRef.current.snapGuides = snapResult.guides;
           }
           
-      // Apply the same offset to all selected nodes with snapped values
-      dragOffsetsRef.current.clear();
-      originalPositions.current.forEach((_pos, id) => {
-        dragOffsetsRef.current.set(id, { dx: finalDx, dy: finalDy });
-      });
-          stateRef.current.alignmentGuides = guides;
+          // Apply the same offset to all selected nodes with snapped values
+          dragOffsetsRef.current.clear();
+          originalPositions.current.forEach((_pos, id) => {
+            dragOffsetsRef.current.set(id, { dx: finalDx, dy: finalDy });
+          });
           requestRedraw();
           return;
         }
@@ -1453,6 +1517,8 @@ export default function CanvasStage(props: {
       stateRef.current.isPanning = false;
       stateRef.current.isMarquee = false;
       stateRef.current.alignmentGuides = { verticalLines: [], horizontalLines: [] };
+      stateRef.current.snapGuides = [];
+      snapping.clearGuides();
       requestRedraw();
     };
     target.addEventListener("pointerdown", onPointerDown);
@@ -1465,7 +1531,7 @@ export default function CanvasStage(props: {
       window.removeEventListener("pointerup", onPointerUp);
       if (motionFrameId) cancelAnimationFrame(motionFrameId);
     };
-  }, [toWorld, drawableNodes, setRawRoots, setSelectedIds, setOffset, requestRedraw, nodeMap, childToParentMap, rawRoots, selectedIds, onSelectInteraction]);
+  }, [toWorld, drawableNodes, setRawRoots, setSelectedIds, setOffset, requestRedraw, nodeMap, childToParentMap, rawRoots, selectedIds, onSelectInteraction, snapping]);
   // Logout cleanup
   useEffect(() => {
     const handleLogout = () => {

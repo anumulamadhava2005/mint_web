@@ -263,7 +263,7 @@ function HomePage() {
     });
   };
 
-  const { drawableNodes, frameOptions } = useDrawable(rawRoots);
+  const { drawableNodes, frameOptions, childToParentMap, nodeMap } = useDrawable(rawRoots);
   const [fitPending, setFitPending] = useState(false);
 
   const selectedFrame: ReferenceFrame | null = useMemo(

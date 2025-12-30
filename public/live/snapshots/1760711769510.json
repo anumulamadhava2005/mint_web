@@ -3,231 +3,29 @@
   "payload": {
     "roots": [
       {
-        "h": 4500,
+        "h": 7347,
         "w": 1275,
         "x": 0,
         "y": 0,
-        "ax": -1071.4080172477074,
-        "ay": -3243.9238237113063,
-        "id": "frame_mjeiiiav",
-        "name": "New frame",
+        "ax": -5803.060162339887,
+        "ay": -4027.4880612772968,
+        "id": "frame_mjr4o2y6",
+        "name": "Homepage",
         "type": "FRAME",
         "width": 1275,
-        "height": 4500,
+        "height": 7346.9,
         "stroke": {
           "color": "#ffffff"
         },
         "children": [
           {
-            "h": 62,
-            "w": 144,
-            "x": 53,
-            "y": 45,
-            "ax": -1018.4934124357987,
-            "ay": -3198.9666562886405,
-            "id": "text_mjeik0bv",
-            "fill": null,
-            "name": "Text",
-            "text": {
-              "color": "#111",
-              "fontSize": 45,
-              "characters": "Area"
-            },
-            "type": "TEXT",
-            "width": 144,
-            "height": 62,
-            "stroke": null,
-            "textRaw": "Text",
-            "children": []
-          },
-          {
-            "h": 86,
-            "w": 793,
-            "x": 241,
-            "y": 35,
-            "ax": -830.6285333500712,
-            "ay": -3209.178081907856,
-            "id": "rect_mjeil5mb",
-            "fill": {
-              "type": "SOLID",
-              "color": "#ffffff"
-            },
-            "name": "Rectangle",
-            "type": "FRAME",
-            "width": 793.4410322047274,
-            "height": 86.14140572861697,
-            "stroke": {
-              "align": "INSIDE",
-              "color": "#ffffff",
-              "weight": 0
-            },
-            "children": [
-              {
-                "h": 40,
-                "w": 100,
-                "x": 170,
-                "y": 23,
-                "ax": -660.8577541328118,
-                "ay": -3186.107379043547,
-                "id": "text_mjeimd76",
-                "fill": null,
-                "name": "Text",
-                "text": {
-                  "color": "#111",
-                  "fontSize": 20,
-                  "characters": "Benefits"
-                },
-                "type": "TEXT",
-                "width": 100,
-                "height": 40,
-                "stroke": null,
-                "textRaw": "Text",
-                "children": []
-              },
-              {
-                "h": 40,
-                "w": 144,
-                "x": 262,
-                "y": 23,
-                "ax": -568.4006334925423,
-                "ay": -3186.1073790435476,
-                "id": "text_mjeimfja",
-                "fill": null,
-                "name": "Text",
-                "text": {
-                  "color": "#111",
-                  "fontSize": 20,
-                  "characters": "Specifications"
-                },
-                "type": "TEXT",
-                "width": 144,
-                "height": 40,
-                "stroke": null,
-                "textRaw": "Text",
-                "children": []
-              },
-              {
-                "h": 40,
-                "w": 100,
-                "x": 400,
-                "y": 23,
-                "ax": -430.217105151868,
-                "ay": -3186.107379043547,
-                "id": "text_mjeimgeg",
-                "fill": null,
-                "name": "Text",
-                "text": {
-                  "color": "#111",
-                  "fontSize": 20,
-                  "characters": "How-to"
-                },
-                "type": "TEXT",
-                "width": 100,
-                "height": 40,
-                "stroke": null,
-                "textRaw": "Text",
-                "children": []
-              },
-              {
-                "h": 40,
-                "w": 120,
-                "x": 508,
-                "y": 23,
-                "ax": -322.1812602791611,
-                "ay": -3186.107379043547,
-                "id": "text_mjeintxw",
-                "fill": null,
-                "name": "Text",
-                "text": {
-                  "color": "#111",
-                  "fontSize": 20,
-                  "characters": "Contact Us"
-                },
-                "type": "TEXT",
-                "width": 120,
-                "height": 40,
-                "stroke": null,
-                "textRaw": "Text",
-                "children": []
-              }
-            ],
-            "textRaw": ""
-          },
-          {
-            "h": 45,
-            "w": 152,
-            "x": 1080,
-            "y": 49,
-            "ax": 9.051288456841805,
-            "ay": -3195.14786458673,
-            "id": "rect_mjeivn5q",
-            "fill": {
-              "type": "SOLID",
-              "color": "#ffffff"
-            },
-            "name": "Rectangle",
-            "type": "FRAME",
-            "width": 152.2315043396831,
-            "height": 45.045618101577475,
-            "stroke": {
-              "color": "#485c11",
-              "weight": 1
-            },
-            "corners": {
-              "uniform": 40
-            },
-            "children": [
-              {
-                "h": 21,
-                "w": 158,
-                "x": 28,
-                "y": 4,
-                "ax": 45.9565757368468,
-                "ay": -3191.5587559342953,
-                "id": "text_mjeixndp",
-                "fill": null,
-                "name": "Text",
-                "text": {
-                  "color": "#ffffff",
-                  "fontSize": 20,
-                  "characters": "Learn more"
-                },
-                "type": "TEXT",
-                "width": 158,
-                "height": 21,
-                "stroke": null,
-                "textRaw": "Text",
-                "children": []
-              }
-            ],
-            "backgroundColor": "#485c11",
-            "textRaw": ""
-          }
-        ],
-        "backgroundColor": "#ffffff",
-        "textRaw": ""
-      },
-      {
-        "h": 4500,
-        "w": 1275,
-        "x": 0,
-        "y": 0,
-        "ax": 373.0034952305341,
-        "ay": -3230.861723146565,
-        "id": "frame_mjej846j",
-        "name": "Benefits",
-        "type": "FRAME",
-        "width": 1275,
-        "height": 4500,
-        "children": [
-          {
-            "h": 4500,
+            "h": 140,
             "w": 1275,
             "x": 0,
-            "y": 1,
-            "ax": 372.7503383695169,
-            "ay": -3230.301666421071,
-            "id": "rect_mjf9rc8m",
+            "y": 0,
+            "ax": -5803.060162339887,
+            "ay": -4027.4880612772968,
+            "id": "rect_mjrce80l",
             "fill": {
               "type": "SOLID",
               "color": "#ffffff"
@@ -235,56 +33,164 @@
             "name": "Rectangle",
             "type": "FRAME",
             "width": 1275,
-            "height": 4500,
+            "height": 140,
             "stroke": {
               "color": "#ffffff",
               "weight": 1
             },
             "children": [
               {
-                "h": 103,
-                "w": 1265,
-                "x": 0,
-                "y": 69,
-                "ax": 372.7503383695168,
-                "ay": -3160.9004361760763,
-                "id": "text_mjf9tcvy",
+                "h": 34,
+                "w": 70,
+                "x": 45,
+                "y": 53,
+                "ax": -5758.300436684008,
+                "ay": -3974.367940134843,
+                "id": "text_mjrcezsy",
                 "fill": null,
                 "name": "Text",
                 "text": {
                   "color": "#111",
-                  "fontSize": 90,
-                  "characters": "Benefits"
+                  "fontSize": 30,
+                  "characters": "Area"
                 },
                 "type": "TEXT",
-                "width": 1265,
-                "height": 103.10401415418846,
+                "width": 70.3004366840078,
+                "height": 33.7597577150923,
                 "stroke": null,
                 "textRaw": "Text",
-                "children": [],
-                "textAlign": "center",
-                "alignItems": "center",
-                "layoutMode": "HORIZONTAL",
-                "justifyContent": "center"
+                "children": []
               },
               {
-                "h": 1104,
-                "w": 966,
-                "x": 156,
-                "y": 305,
-                "ax": 528.3917653503903,
-                "ay": -2925.031280309117,
-                "id": "rect_mjflr35u",
+                "h": 68,
+                "w": 466,
+                "x": 405,
+                "y": 36,
+                "ax": -5398.36239239165,
+                "ay": -3991.737575766591,
+                "id": "rect_mjrchn0i",
                 "fill": {
                   "type": "SOLID",
                   "color": "#ffffff"
                 },
                 "name": "Rectangle",
                 "type": "FRAME",
-                "width": 965.734171317558,
-                "height": 1104.248984521827,
+                "width": 465.60446010352734,
+                "height": 68.49902897858874,
                 "stroke": {
-                  "color": "#111827",
+                  "color": "#ffffff",
+                  "weight": 1
+                },
+                "children": [
+                  {
+                    "h": 20,
+                    "w": 80,
+                    "x": 14,
+                    "y": 24,
+                    "ax": -5384,
+                    "ay": -3967.4880612772968,
+                    "id": "text_mjrcj4qo",
+                    "fill": null,
+                    "name": "Text",
+                    "text": {
+                      "color": "#111",
+                      "fontSize": 20,
+                      "characters": "Benefits"
+                    },
+                    "type": "TEXT",
+                    "width": 80,
+                    "height": 20,
+                    "stroke": null,
+                    "textRaw": "Text",
+                    "children": []
+                  },
+                  {
+                    "h": 19,
+                    "w": 126,
+                    "x": 112,
+                    "y": 24,
+                    "ax": -5285.913634848625,
+                    "ay": -3967.804378398037,
+                    "id": "text_mjrcne9i",
+                    "fill": null,
+                    "name": "Text",
+                    "text": {
+                      "color": "#111",
+                      "fontSize": 20,
+                      "characters": "Specifications"
+                    },
+                    "type": "TEXT",
+                    "width": 125.913634848625,
+                    "height": 18.937510622283753,
+                    "stroke": null,
+                    "textRaw": "Text",
+                    "children": []
+                  },
+                  {
+                    "h": 19,
+                    "w": 71,
+                    "x": 254,
+                    "y": 24,
+                    "ax": -5144,
+                    "ay": -3968.120695518776,
+                    "id": "text_mjrcnkz7",
+                    "fill": null,
+                    "name": "Text",
+                    "text": {
+                      "color": "#111",
+                      "fontSize": 20,
+                      "characters": "How-to"
+                    },
+                    "type": "TEXT",
+                    "width": 70.8645631928494,
+                    "height": 19.25382774302352,
+                    "stroke": null,
+                    "textRaw": "Text",
+                    "children": []
+                  },
+                  {
+                    "h": 20,
+                    "w": 105,
+                    "x": 342,
+                    "y": 24,
+                    "ax": -5056,
+                    "ay": -3968.120695518776,
+                    "id": "text_mjrcnpva",
+                    "fill": null,
+                    "name": "Text",
+                    "text": {
+                      "color": "#111",
+                      "fontSize": 20,
+                      "characters": "Contact Us"
+                    },
+                    "type": "TEXT",
+                    "width": 104.797349673217,
+                    "height": 20.250226673354064,
+                    "stroke": null,
+                    "textRaw": "Text",
+                    "children": []
+                  }
+                ],
+                "textRaw": ""
+              },
+              {
+                "h": 48,
+                "w": 127,
+                "x": 1091,
+                "y": 46,
+                "ax": -4712,
+                "ay": -3981.4880612772968,
+                "id": "rect_mjrcs1xn",
+                "fill": {
+                  "type": "SOLID",
+                  "color": "#ffffff"
+                },
+                "name": "Rectangle",
+                "type": "FRAME",
+                "width": 127,
+                "height": 48,
+                "stroke": {
+                  "color": "#485c11",
                   "weight": 1
                 },
                 "corners": {
@@ -292,58 +198,232 @@
                 },
                 "children": [
                   {
-                    "h": 146,
-                    "w": 420,
-                    "x": 91,
-                    "y": 96,
-                    "ax": 619.3411143977215,
-                    "ay": -2828.9563760787273,
-                    "id": "text_mjflw2rk",
+                    "h": 14,
+                    "w": 74,
+                    "x": 27,
+                    "y": 17,
+                    "ax": -4685.5,
+                    "ay": -3964.4880612772968,
+                    "id": "text_mjrcwrft",
                     "fill": null,
                     "name": "Text",
                     "text": {
-                      "color": "#000000",
-                      "fontSize": 20,
-                      "characters": "",
-                      "lineHeight": 80
+                      "color": "#ffffff",
+                      "fontSize": 14,
+                      "characters": "Learn more"
                     },
                     "type": "TEXT",
-                    "width": 419.8343968729382,
-                    "height": 146.47757924763783,
+                    "width": 74,
+                    "height": 14,
                     "stroke": null,
                     "textRaw": "Text",
-                    "children": [],
-                    "backgroundColor": "#ffffff",
-                    "dataBinding": {
-                      "field": "title",
-                      "parentId": "rect_mjflr35u",
-                      "type": "field"
-                    }
+                    "children": []
                   }
                 ],
-                "backgroundColor": "#000000",
-                "dataSource": {
-                  "url": "https://jsonplaceholder.typicode.com/posts",
-                  "method": "GET",
-                  "headers": "",
-                  "params": "",
-                  "selectedFields": [
-                    "fileKey",
-                    "version",
-                    "payload",
-                    "timestamp",
-                    "userId",
-                    "id",
-                    "title",
-                    "body"
-                  ],
-                  "infiniteScroll": true,
-                  "itemSpacing": 10,
-                  "direction": "vertical"
-                },
+                "backgroundColor": "#485c11",
                 "textRaw": ""
               }
             ],
+            "textRaw": ""
+          },
+          {
+            "id": "rect_mjsnc31q",
+            "type": "FRAME",
+            "name": "Rectangle",
+            "x": 5845,
+            "y": 4235,
+            "width": 1195,
+            "height": 714,
+            "w": 1195,
+            "h": 714,
+            "fill": {
+              "type": "SOLID",
+              "color": "#ffffff"
+            },
+            "stroke": {
+              "color": "#ffffff",
+              "weight": 1
+            },
+            "children": [
+              {
+                "id": "text_mjsndhv6",
+                "type": "TEXT",
+                "name": "Text",
+                "x": 0,
+                "y": 1,
+                "width": 1195,
+                "height": 112,
+                "w": 1195,
+                "h": 112,
+                "fill": null,
+                "stroke": null,
+                "children": [],
+                "text": {
+                  "characters": "Browse everything",
+                  "fontSize": 100,
+                  "color": "#111"
+                },
+                "textRaw": "Text",
+                "justifyContent": "center",
+                "alignItems": "center",
+                "ax": 42.649072803784954,
+                "ay": 208.67616566741674
+              },
+              {
+                "id": "rect_mjsng8h7",
+                "type": "FRAME",
+                "name": "Rectangle",
+                "x": 0,
+                "y": 144,
+                "width": 1195,
+                "height": 362,
+                "w": 1195,
+                "h": 362,
+                "fill": {
+                  "type": "SOLID",
+                  "color": "#ffffff"
+                },
+                "stroke": {
+                  "color": "#111827",
+                  "weight": 1
+                },
+                "children": [],
+                "backgroundColor": "#8E9C78",
+                "itemSpacing": 0,
+                "corners": {
+                  "uniform": 30
+                },
+                "ax": 42.49999999999995,
+                "ay": 560,
+                "textRaw": ""
+              },
+              {
+                "id": "rect_mjsnkflp",
+                "type": "FRAME",
+                "name": "Rectangle",
+                "x": 102,
+                "y": 3,
+                "width": 907,
+                "height": 644,
+                "w": 907,
+                "h": 644,
+                "fill": {
+                  "type": "SOLID",
+                  "color": "#ffffff"
+                },
+                "stroke": {
+                  "color": "#111827",
+                  "weight": 1
+                },
+                "children": [
+                  {
+                    "id": "rect_mjsnn5x0",
+                    "type": "FRAME",
+                    "name": "Rectangle",
+                    "x": 19,
+                    "y": 18,
+                    "width": 869.74,
+                    "height": 607.44,
+                    "w": 870,
+                    "h": 607,
+                    "fill": {
+                      "type": "SOLID",
+                      "color": "#ffffff"
+                    },
+                    "stroke": {
+                      "color": "#111827",
+                      "weight": 1
+                    },
+                    "children": [],
+                    "corners": {
+                      "uniform": 16
+                    },
+                    "ax": 205.13,
+                    "ay": 437.28,
+                    "textRaw": ""
+                  }
+                ],
+                "backgroundColor": "#000000",
+                "corners": {
+                  "uniform": 24
+                },
+                "ax": 186.50000000000003,
+                "ay": 418.99999999999994,
+                "textRaw": ""
+              }
+            ],
+            "ax": 42.49999999999998,
+            "ay": 208,
+            "textRaw": ""
+          },
+          {
+            "id": "rect_mjsnp6bv",
+            "type": "FRAME",
+            "name": "Rectangle",
+            "x": 5846,
+            "y": 4951,
+            "width": 1195,
+            "height": 6214.9,
+            "w": 1195,
+            "h": 6215,
+            "fill": {
+              "type": "SOLID",
+              "color": "#ffffff"
+            },
+            "stroke": {
+              "color": "#ffffff",
+              "weight": 1
+            },
+            "children": [
+              {
+                "id": "rect_mjsnrdh7",
+                "type": "FRAME",
+                "name": "Rectangle",
+                "x": 0,
+                "y": 0,
+                "width": 1195,
+                "height": 235,
+                "w": 1195,
+                "h": 235,
+                "fill": {
+                  "type": "SOLID",
+                  "color": "#ffffff"
+                },
+                "stroke": {
+                  "color": "#111827",
+                  "weight": 1
+                },
+                "children": [
+                  {
+                    "id": "text_mjsnt7tg",
+                    "type": "TEXT",
+                    "name": "Text",
+                    "x": 0,
+                    "y": 33,
+                    "width": 1195,
+                    "height": 30,
+                    "w": 1195,
+                    "h": 30,
+                    "fill": null,
+                    "stroke": null,
+                    "children": [],
+                    "text": {
+                      "characters": "Trusted by\"",
+                      "fontSize": 20,
+                      "color": "#6F6F6F"
+                    },
+                    "textRaw": "Text",
+                    "ax": 42.83216162378458,
+                    "ay": 957.0858268191155
+                  }
+                ],
+                "ax": 42.864895531071646,
+                "ay": 923.9376431659387,
+                "textRaw": ""
+              }
+            ],
+            "ax": 42.864895531071646,
+            "ay": 923.9376431659387,
             "textRaw": ""
           }
         ],
@@ -353,19 +433,8 @@
     ],
     "manifest": {},
     "refW": 1275,
-    "refH": 4500,
-    "interactions": [
-      {
-        "id": "it_mjoh36il",
-        "sourceId": "text_mjeimd76",
-        "targetId": "frame_mjej846j",
-        "type": "navigation",
-        "trigger": "onClick",
-        "animation": {
-          "name": "none"
-        }
-      }
-    ],
+    "refH": 7347,
+    "interactions": [],
     "focusFrameId": null
   }
 }
