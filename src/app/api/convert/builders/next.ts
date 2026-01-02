@@ -6,7 +6,7 @@ import { flattenTreeToNodes } from "../core/tree";
 import { globalsCss, tokensTs, colorUtilTs, readme } from "../shared/styles";
 
 /* --- live templates injected into the zip --- */
-function nextLivePageTsx(initialSnapJson?: string) {
+export function nextLivePageTsx(initialSnapJson?: string) {
   return `"use client";
 import React from "react";
 import { LiveTree } from "../src/live/runtime";

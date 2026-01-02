@@ -1,55 +1,5 @@
-// helpers for live files (put in app/api/convert/core/live-templates.ts or inline)
-export function nextLivePageTsx() {
-  return `"use client";
-import React from "react";
-import { LiveTree } from "../src/live/runtime";
-
-function ResponsiveStage({ refW, refH, children }: { refW: number; refH: number; children: React.ReactNode }) {
-  const outerRef = React.useRef<HTMLDivElement>(null);
-  const [scale, setScale] = React.useState(1);
-  React.useLayoutEffect(() => {
-    const el = outerRef.current; if (!el) return;
-    const measure = () => { const w = el.clientWidth || el.getBoundingClientRect().width || 0; setScale(w > 0 ? Math.max(0.01, w / refW) : 1); };
-    const ro = new ResizeObserver(measure); ro.observe(el); measure(); return () => ro.disconnect();
-  }, [refW]);
-  return (
-    <div ref={outerRef} style={{ position: "relative", width: "100%", height: "100vh", overflow: "auto", background: "#fff" }}>
-      <div style={{ width: "100%", height: \`\${Math.max(1, refH * scale)}px\` }} />
-  <div style={{ position: "absolute", left: 0, top: 0, width: refW, height: refH, transform: 'scale(' + String(scale) + ')', transformOrigin: "top left" }}>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-export default function Page() {
-  const origin = process.env.NEXT_PUBLIC_LIVE_ORIGIN!;
-  const fileKey = process.env.NEXT_PUBLIC_FILE_KEY!;
-  const [snap, setSnap] = React.useState<any>(null);
-
-  const fetchSnapshot = React.useCallback(async () => {
-    const res = await fetch(\`\${origin}/api/live/snapshot?fileKey=\${encodeURIComponent(fileKey)}\`, { credentials: "include" });
-    if (res.ok) setSnap(await res.json());
-  }, [origin, fileKey]);
-
-  React.useEffect(() => {
-    fetchSnapshot();
-    const es = new EventSource(\`\${origin}/api/live/stream?fileKey=\${encodeURIComponent(fileKey)}\`, { withCredentials: true } as any);
-    es.addEventListener("version", () => { fetchSnapshot(); });
-    es.onerror = () => {};
-    return () => { es.close(); };
-  }, [origin, fileKey, fetchSnapshot]);
-
-  if (!snap) return <div style={{ padding: 24 }}>Waiting for snapshot…</div>;
-  const { refW, refH, roots, manifest } = snap.payload;
-  return (
-    <ResponsiveStage refW={refW} refH={refH}>
-      <LiveTree nodes={roots} manifest={manifest} />
-    </ResponsiveStage>
-  );
-}
-`;
-}
+// Re-export the rich page template from the builders so we have a single canonical implementation
+export { nextLivePageTsx } from "../builders/next";
 
 export function liveRuntimeTsx() {
   return `"use client";

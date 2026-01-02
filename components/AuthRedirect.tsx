@@ -24,70 +24,34 @@ export default function AuthRedirect(): React.ReactElement {
 
     if (typeof document !== 'undefined') {
       const checkAuthStatus = async () => {
-        const hasCookie = document.cookie.includes('figma_access') || document.cookie.includes('figma_refresh');
         const currentPath = window.location.pathname;
-
-        // If no auth cookie and not already on home page, redirect to home
-        if (!hasCookie && currentPath !== '/') {
-          console.log('No authentication found - redirecting to home');
-          router.push('/');
-          return;
-        }
-        
-        if (hasCookie) {
-          try {
-            // Only make one auth check on initial load
-            const response = await fetch('/api/figma/me');
-            if (response.ok) {
-              console.log('Valid authentication confirmed');
-              localStorage.setItem('canvas-session-timestamp', Date.now().toString());
-              window.dispatchEvent(new CustomEvent('auth-confirmed', {
-                detail: { authenticated: true }
-              }));
-            } else if (response.status === 401) {
+        try {
+          // Verify authentication via server (httpOnly cookies are not readable by JS)
+          const response = await fetch('/api/figma/me', { credentials: 'include' });
+          if (response.ok) {
+            console.log('Valid authentication confirmed');
+            localStorage.setItem('canvas-session-timestamp', Date.now().toString());
+            window.dispatchEvent(new CustomEvent('auth-confirmed', {
+              detail: { authenticated: true }
+            }));
+          } else if (response.status === 401) {
+            if (currentPath !== '/') {
               console.log('Auth invalid - redirecting to home');
               router.push('/');
             }
-          } catch (e) {
-            console.warn('Auth check failed:', e);
           }
+        } catch (e) {
+          console.error('Auth check failed', e);
+          if (currentPath !== '/') router.push('/');
         }
       };
 
-      // Small initial delay to allow Next.js hydration and cookie setting
-      authCheckTimeoutRef.current = setTimeout(checkAuthStatus, 100);
+      // Use a small delay to ensure cookies are set post-redirect back from OAuth
+      authCheckTimeoutRef.current = setTimeout(checkAuthStatus, 50);
     }
 
-    // Cleanup timeout on unmount
     return () => {
-      if (authCheckTimeoutRef.current) {
-        clearTimeout(authCheckTimeoutRef.current);
-      }
-    };
-  }, [router]);
-
-  // Listen for manual logout events
-  useEffect(() => {
-    const handleLogout = () => {
-      console.log('Manual logout detected - clearing all storage');
-      
-      try {
-        localStorage.clear();
-        sessionStorage.clear();
-      } catch (e) {
-        console.warn('Failed to clear storage:', e);
-      }
-      
-      // Reset the check flag so auth will be re-evaluated
-      hasCheckedRef.current = false;
-      
-      router.replace('/');
-    };
-
-    window.addEventListener('logout', handleLogout);
-    
-    return () => {
-      window.removeEventListener('logout', handleLogout);
+      if (authCheckTimeoutRef.current) clearTimeout(authCheckTimeoutRef.current);
     };
   }, [router]);
 

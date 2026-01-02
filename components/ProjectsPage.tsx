@@ -462,29 +462,46 @@ export default function ProjectsPage() {
     let thumbnail: string | null = null;
 
     try {
-      // Extract fileKey from Figma URL
-      const fileKey = figmaUrl.split('/').pop()?.split('?')[0] || figmaUrl;
+      console.log('[CREATE PROJECT] Starting project creation:', { name, figmaUrl });
+      
+      const hasFigmaUrl = Boolean(figmaUrl && figmaUrl.trim());
+      // Extract fileKey from Figma URL if provided
+      const fileKey = hasFigmaUrl ? (figmaUrl.split('/').pop()?.split('?')[0] || figmaUrl) : undefined;
+      if (hasFigmaUrl) console.log('[CREATE PROJECT] Extracted fileKey:', fileKey);
 
       if (thumbnailFile) {
+        console.log('[CREATE PROJECT] Uploading thumbnail...');
         thumbnail = await uploadToMintApi(thumbnailFile);
+        console.log('[CREATE PROJECT] Thumbnail uploaded:', thumbnail);
       }
 
-      // First, get the Figma frame data
-      const figmaRes = await fetch(`/api/figma/frames?fileUrl=${encodeURIComponent(figmaUrl)}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-      });
+      let frameCount = 0;
+      let rawRoots: any[] = [];
+      if (hasFigmaUrl) {
+        // First, get the Figma frame data
+        console.log('[CREATE PROJECT] Fetching Figma data...');
+        const figmaRes = await fetch(`/api/figma/frames?fileUrl=${encodeURIComponent(figmaUrl)}`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+        });
 
-      if (!figmaRes.ok) {
-        throw new Error('Failed to fetch Figma data. Please check the URL.');
+        if (!figmaRes.ok) {
+          const errorText = await figmaRes.text();
+          console.error('[CREATE PROJECT] Figma fetch failed:', figmaRes.status, errorText);
+          throw new Error(`Failed to fetch Figma data (${figmaRes.status}). Please check the URL and ensure you have access to the file.`);
+        }
+
+        const figmaData = await figmaRes.json();
+        rawRoots = (figmaData.extracted || figmaData.frames || []);
+        frameCount = rawRoots.length;
+        console.log('[CREATE PROJECT] Figma data fetched:', { frameCount });
       }
-
-      const figmaData = await figmaRes.json();
       
       // Create project via API
+      console.log('[CREATE PROJECT] Creating project via API...');
       const createRes = await fetch('/api/projects', {
         method: 'POST',
         headers: {
@@ -492,23 +509,29 @@ export default function ProjectsPage() {
         },
         body: JSON.stringify({
           name,
-          fileKey,
-          rawRoots: figmaData.extracted || figmaData.frames || [],
-          frameCount: (figmaData.extracted || figmaData.frames || []).length,
-          thumbnail
+          // Provide a placeholder key if no Figma URL was provided
+          ...(hasFigmaUrl && fileKey ? { fileKey } : { fileKey: `manual_${Date.now().toString(36)}` }),
+          // Avoid sending huge payloads that trigger 413 upstream
+          frameCount,
+          // Upstream requires rawRoots to be an array. Use [] when no Figma URL.
+          rawRoots,
+          thumbnail,
         }),
       });
 
       const data: APIResponse<Project> = await createRes.json();
+      console.log('[CREATE PROJECT] API response:', { status: createRes.status, data });
 
       if (!createRes.ok) {
         const errorMessage = data.error || (Array.isArray(data.details) ? data.details.join(', ') : 'Failed to create project');
+        console.error('[CREATE PROJECT] Creation failed:', errorMessage);
         throw new Error(errorMessage);
       }
 
       if (data.success && data.project) {
         // Type assertion to ensure project is not undefined
         const newProject = data.project as Project;
+        console.log('[CREATE PROJECT] Project created successfully:', newProject.id);
         setProjects(prev => [...prev, newProject]);
         setIsModalOpen(false);
         
@@ -517,11 +540,14 @@ export default function ProjectsPage() {
         (window as any).__currentProject = newProject;
         
         // Route to the project canvas using hash navigation
+        console.log('[CREATE PROJECT] Navigating to project:', `#project=${newProject.id}`);
         window.location.hash = `#project=${newProject.id}`;
       } else {
-        setError('Failed to create project');
+        console.error('[CREATE PROJECT] Unexpected response format:', data);
+        setError('Failed to create project - unexpected response format');
       }
     } catch (e: any) {
+      console.error('[CREATE PROJECT] Error:', e);
       setError(e?.message || 'Failed to create project');
     }
   };
@@ -832,9 +858,34 @@ function CreateProjectModal({ onClose, onCreate }: CreateProjectModalProps) {
   const [figmaUrl, setFigmaUrl] = useState('');
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [isCheckingAuth, setIsCheckingAuth] = useState(false);
 
   const handleCreate = async () => {
-    if (!projectName.trim() || !figmaUrl.trim()) return;
+    if (!projectName.trim()) return;
+
+    // Only verify Figma auth if a URL was provided
+    if (figmaUrl.trim()) {
+      setIsCheckingAuth(true);
+      try {
+        const res = await fetch('/api/figma/me', { credentials: 'include' });
+        if (!res.ok) {
+          setAuthError('Your Figma session is missing or expired. Click "Login with Figma" in the navigation bar.');
+          setIsCheckingAuth(false);
+          return;
+        }
+      } catch (err) {
+        setAuthError('Unable to verify Figma session. Please try again.');
+        setIsCheckingAuth(false);
+        return;
+      }
+      setIsCheckingAuth(false);
+      setAuthError('');
+    } else {
+      // Clear any previous auth errors when no URL is provided
+      setAuthError('');
+    }
+
     setIsCreating(true);
     await onCreate(projectName, figmaUrl, thumbnailFile);
     setIsCreating(false);
@@ -861,7 +912,7 @@ function CreateProjectModal({ onClose, onCreate }: CreateProjectModalProps) {
           </div>
 
           <div>
-            <label className="block text-sm font-extrabold mb-2 text-black">Figma File URL</label>
+            <label className="block text-sm font-extrabold mb-2 text-black">Figma File URL (optional)</label>
             <input
               type="text"
               value={figmaUrl}
@@ -880,6 +931,13 @@ function CreateProjectModal({ onClose, onCreate }: CreateProjectModalProps) {
               className="w-full px-4 py-2.5 border-2 border-black rounded-md focus:outline-none focus:ring-2 focus:ring-red-600 shadow-[4px_4px_0_0_#000] text-black"
             />
           </div>
+
+          {/* Authentication Error */}
+          {authError && (
+            <div className="p-4 bg-red-100 border-2 border-red-600 rounded-md">
+              <p className="text-sm font-bold text-red-900">{authError}</p>
+            </div>
+          )}
         </div>
 
         <div className="p-6 bg-stone-100 bord er-t-2 border-black flex gap-3 justify-end">
@@ -892,10 +950,10 @@ function CreateProjectModal({ onClose, onCreate }: CreateProjectModalProps) {
           </button>
           <button
             onClick={handleCreate}
-            disabled={!projectName.trim() || !figmaUrl.trim() || isCreating}
+            disabled={!projectName.trim() || isCreating || isCheckingAuth}
             className="px-5 py-2.5 rounded-md bg-red-600 text-white border-2 border-black text-sm font-extrabold hover:bg-red-700 transition disabled:opacity-50 shadow-[4px_4px_0_0_#000]"
           >
-            {isCreating ? 'Creating...' : 'Create Project'}
+            {isCheckingAuth ? 'Verifying session...' : isCreating ? 'Creating...' : 'Create Project'}
           </button>
         </div>
       </div>

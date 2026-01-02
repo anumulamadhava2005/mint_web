@@ -3,14 +3,14 @@
 
 import * as React from "react";
 import { useCallback, useMemo, useState, useEffect, useRef } from "react";
-import Toolbar from "../../components/ToolBar";
+import Toolbar from "../../components/FigmaToolbar";
 import CanvasStage from "../../components/CanvasStage";
-import PropertiesPanel from "../../components/PropertiesPanel";
+import PropertiesPanel from "../../components/FigmaPropertiesPanel";
 import ConvertModal from "../../components/ConvertModal";
 import { findNodeById } from "../../lib/tree";
 import { useDrawable } from "../../hooks/useDrawable";
 import { NodeInput, ReferenceFrame } from "../../lib/figma-types";
-import Sidebar from "../../components/Sidebar";
+import FigmaLayersPanel from "../../components/FigmaLayersPanel";
 import { Home } from "../../components/home";
 import FrameDock from "../../components/FrameDock";
 import dynamic from 'next/dynamic';
@@ -1768,15 +1768,11 @@ function HomePage() {
       {/* Main Content Area - 3 column layout */}
       <div className={styles.main}>
         {/* Left Sidebar - Layers Panel */}
-        <Sidebar
-          rawRoots={rawRoots}
-          setRawRoots={setRawRoots}
+        <FigmaLayersPanel
+          layers={rawRoots ?? []}
+          setLayers={(layers) => setRawRoots(layers)}
           selectedIds={selectedIds}
           setSelectedIds={setSelectedIds}
-          selectedFrameId={selectedFrameId}
-          setSelectedFrameId={setSelectedFrameId}
-          lastFileKey={lastFileKey}
-          onReset={handleResetCanvas}
         />
 
         {/* Center Canvas */}

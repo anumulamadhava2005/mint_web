@@ -36,6 +36,8 @@ const rectsIntersect = (
   b: { x: number; y: number; w: number; h: number },
 ) => !(a.x + a.w < b.x || b.x + b.w < a.x || a.y + a.h < b.y || b.y + b.h < a.y)
 // OPTIMIZATION: More performant way to update node positions than structuredClone
+// Updates both local coordinates (x, y) and absolute coordinates (ax, ay)
+// ax/ay are CANVAS-ORIGIN coordinates, not parent-relative
 const updateNodePositions = (nodes: NodeInput[], moved: Map<string, { dx: number, dy: number }>): NodeInput[] => {
   return nodes.map(node => {
     let hasChanged = false
@@ -46,13 +48,21 @@ const updateNodePositions = (nodes: NodeInput[], moved: Map<string, { dx: number
     }
     if (offsets) {
       hasChanged = true;
+      // Update local coordinates (relative to parent)
       const newX = ((node as any).x ?? 0) + offsets.dx;
       const newY = ((node as any).y ?? 0) + offsets.dy;
+      
+      // Update absolute coordinates (relative to canvas origin)
+      // ax/ay represent world position, so they also move by the same delta
+      const newAx = ((node as any).ax ?? 0) + offsets.dx;
+      const newAy = ((node as any).ay ?? 0) + offsets.dy;
       
       const newNode = { 
         ...node, 
         x: newX,
         y: newY,
+        ax: newAx,
+        ay: newAy,
         children: newChildren 
       } as NodeInput;
       if (newNode.absoluteBoundingBox) {
@@ -1138,12 +1148,19 @@ export default function CanvasStage(props: {
           const initialW = tool === 'text' ? 200 : 10;
           const initialH = tool === 'text' ? 40 : 10;
           
+          // Calculate absolute coordinates (canvas origin)
+          // ax/ay = parent's absolute position + local position
+          const ax = wx; // World coordinates are already absolute to canvas origin
+          const ay = wy;
+          
           const newNode: any = {
             id,
             type: tool === 'text' ? 'TEXT' : (tool === 'ellipse' ? 'ELLIPSE' : 'FRAME'),
             name: tool === 'text' ? 'Text' : (tool === 'ellipse' ? 'Ellipse' : 'Rectangle'),
             x: relX,
             y: relY,
+            ax, // Absolute X (canvas origin)
+            ay, // Absolute Y (canvas origin)
             width: initialW,
             height: initialH,
             w: initialW,
@@ -1599,6 +1616,9 @@ export default function CanvasStage(props: {
               if (parentNode) {
                 (removed as any).x = wx - parentNode.x;
                 (removed as any).y = wy - parentNode.y;
+                // Set ax/ay as absolute canvas coordinates
+                (removed as any).ax = wx;
+                (removed as any).ay = wy;
               }
               const next = insertExistingNodeUnderParent(withoutNode, targetParentId, removed);
               setRawRoots(next);
@@ -1609,6 +1629,8 @@ export default function CanvasStage(props: {
             } else {
               // Move to top-level
               (removed as any).x = wx; (removed as any).y = wy;
+              // For top-level, x/y ARE the absolute coordinates
+              (removed as any).ax = wx; (removed as any).ay = wy;
               setRawRoots([...(withoutNode || []), removed]);
               setSelectedIds(new Set([removed.id]));
               requestRedraw();
@@ -1625,6 +1647,8 @@ export default function CanvasStage(props: {
           name: parsed.name || 'Dropped Component',
           x: wx,
           y: wy,
+          ax: wx, // Absolute canvas coordinates (initially same as world coords)
+          ay: wy,
           width: parsed.width || 100,
           height: parsed.height || 100,
           fill: parsed.fill || { type: 'SOLID', color: '#ffffff' },
@@ -1643,6 +1667,8 @@ export default function CanvasStage(props: {
         name: 'Text',
         x: wx,
         y: wy,
+        ax: wx, // Absolute canvas coordinates
+        ay: wy,
         width: 200,
         height: 40,
         text: { characters: textData, fontSize: 20, color: '#111' },
@@ -1659,6 +1685,8 @@ export default function CanvasStage(props: {
         name: 'Rectangle',
         x: wx,
         y: wy,
+        ax: wx, // Absolute canvas coordinates
+        ay: wy,
         width: 100,
         height: 100,
         fill: { type: 'SOLID', color: '#ffffff' },
@@ -1689,6 +1717,9 @@ export default function CanvasStage(props: {
       if (parentNode) {
         (newNode as any).x = wx - parentNode.x;
         (newNode as any).y = wy - parentNode.y;
+        // ax/ay stay at world coordinates (absolute to canvas origin)
+        (newNode as any).ax = wx;
+        (newNode as any).ay = wy;
       }
       const nextRoots = updateNodePositionsForInsert(rawRoots, parentId, newNode!);
       setRawRoots(nextRoots);
@@ -1799,40 +1830,60 @@ function insertExistingNodeUnderParent(roots: NodeInput[], parentId: string, nod
 
 // Helper: update temporary preview node size/position by id (full update with absolute bounds)
 // Helper: update temporary preview node size/position by id
+// Now also computes ax/ay as absolute canvas coordinates
 function updateTempNode(roots: NodeInput[], id: string, x: number, y: number, w: number, h: number, tool: "rect" | "ellipse" | "text"): NodeInput[] {
-  const rec = (node: NodeInput): NodeInput => {
+  // First pass: compute absolute coordinates by tracking parent chain
+  const rec = (node: NodeInput, parentAx: number, parentAy: number): NodeInput => {
+    // Calculate this node's absolute position
+    const nodeAx = parentAx + ((node as any).x ?? 0);
+    const nodeAy = parentAy + ((node as any).y ?? 0);
+    
     if (node.id === id) {
       const next: any = { ...node };
       next.x = x; next.y = y; next.width = w; next.height = h; next.w = w; next.h = h;
+      // Set ax/ay as absolute canvas coordinates (parent's absolute + local position)
+      next.ax = parentAx + x;
+      next.ay = parentAy + y;
       if (tool !== 'text') {
         next.type = tool === 'ellipse' ? 'ELLIPSE' : 'FRAME';
       }
       return next as NodeInput;
     }
     if (node.children && node.children.length) {
-      const nextChildren = node.children.map(rec);
+      const nextChildren = node.children.map(c => rec(c, nodeAx, nodeAy));
       if (nextChildren.some((c, i) => c !== node.children![i])) {
         return { ...node, children: nextChildren };
       }
     }
     return node;
   };
-  return roots.map(rec);
+  // Root nodes start at canvas origin (0, 0)
+  return roots.map(root => rec(root, 0, 0));
 }
 
 // Helper: update a node's rect by id (immutable)
+// Now also updates ax/ay as absolute canvas coordinates
 function updateNodeRect(
   roots: NodeInput[],
   id: string,
   rect: { x?: number; y?: number; width?: number; height?: number }
 ): NodeInput[] {
-  const rec = (node: NodeInput): NodeInput => {
+  const rec = (node: NodeInput, parentAx: number, parentAy: number): NodeInput => {
+    // Calculate this node's absolute position
+    const nodeAx = parentAx + ((node as any).x ?? 0);
+    const nodeAy = parentAy + ((node as any).y ?? 0);
+    
     if (node.id === id) {
       const next: any = { ...node }
       if (typeof rect.x === 'number') next.x = rect.x
       if (typeof rect.y === 'number') next.y = rect.y
       if (typeof rect.width === 'number') { next.width = rect.width; next.w = rect.width }
       if (typeof rect.height === 'number') { next.height = rect.height; next.h = rect.height }
+      
+      // Update ax/ay as absolute canvas coordinates
+      next.ax = parentAx + (typeof rect.x === 'number' ? rect.x : ((node as any).x ?? 0));
+      next.ay = parentAy + (typeof rect.y === 'number' ? rect.y : ((node as any).y ?? 0));
+      
       if (next.absoluteBoundingBox) {
         next.absoluteBoundingBox = {
           ...next.absoluteBoundingBox,
@@ -1845,14 +1896,15 @@ function updateNodeRect(
       return next as NodeInput
     }
     if (node.children && node.children.length) {
-      const nextChildren = node.children.map(rec)
+      const nextChildren = node.children.map(c => rec(c, nodeAx, nodeAy))
       if (nextChildren.some((c, i) => c !== node.children![i])) {
         return { ...node, children: nextChildren }
       }
     }
     return node
   }
-  return roots.map(rec)
+  // Root nodes start at canvas origin (0, 0)
+  return roots.map(root => rec(root, 0, 0))
 }
 
 // Helper: remove nodes (by id) from the tree
@@ -1872,6 +1924,7 @@ function removeNodesByIds(roots: NodeInput[], ids: Set<string>): NodeInput[] {
 }
 
 // Helper: duplicate nodes by id; returns new tree and new ids
+// Also properly updates ax/ay (absolute canvas coordinates)
 function duplicateNodesByIds(roots: NodeInput[], ids: Set<string>): { next: NodeInput[]; newIds: string[] } {
   const idMap = new Map<string, string>()
   const genId = (base: string) => {
@@ -1886,9 +1939,32 @@ function duplicateNodesByIds(roots: NodeInput[], ids: Set<string>): { next: Node
       id: newId,
       x: (node as any).x + 16,
       y: (node as any).y + 16,
+      // Also offset ax/ay by the same amount (they're absolute to canvas origin)
+      ax: ((node as any).ax ?? 0) + 16,
+      ay: ((node as any).ay ?? 0) + 16,
     }
     if (node.children && node.children.length) {
-      out.children = node.children.map(cloneNode)
+      // Children keep their local positions (x,y), but their ax/ay need to be recalculated
+      // based on the new parent position
+      out.children = node.children.map((child: NodeInput) => cloneChildNode(child, 16, 16))
+    }
+    return out as NodeInput
+  }
+  
+  // Clone children - they keep same x,y but ax/ay offset by parent's delta
+  const cloneChildNode = (node: NodeInput, parentDeltaX: number, parentDeltaY: number): NodeInput => {
+    const newId = genId(node.id)
+    idMap.set(node.id, newId)
+    const out: any = {
+      ...node,
+      id: newId,
+      // Children keep same local position
+      // But their absolute position shifts by parent's delta
+      ax: ((node as any).ax ?? 0) + parentDeltaX,
+      ay: ((node as any).ay ?? 0) + parentDeltaY,
+    }
+    if (node.children && node.children.length) {
+      out.children = node.children.map((child: NodeInput) => cloneChildNode(child, parentDeltaX, parentDeltaY))
     }
     return out as NodeInput
   }

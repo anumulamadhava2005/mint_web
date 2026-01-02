@@ -3,20 +3,20 @@
   flex-direction: column;
   height: 100vh;
   width: 100vw;
-  background: #0f172a; /* gray-950 */
+  background: #1e1e1e;
   color: #ffffff;
   overflow: hidden;
 }
 
 .toolbarBar {
-  background: #111827; /* gray-900 */
-  /* border-bottom removed to avoid extra strip */
+  background: #2c2c2c;
   flex-shrink: 0;
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   z-index: 50;
+  height: 48px;
 }
 
 .main {
@@ -24,12 +24,12 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
-  padding-top: 6px;
+  padding-top: 48px;
 }
 
 .center {
   flex: 1 1 auto;
-  background: #111827;
+  background: #1e1e1e;
   overflow: hidden;
   position: relative;
 }

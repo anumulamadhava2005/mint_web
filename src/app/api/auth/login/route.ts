@@ -5,7 +5,9 @@ export async function GET() {
   const clientId = process.env.FIGMA_CLIENT_ID!;
   const redirectUri = encodeURIComponent(process.env.FIGMA_REDIRECT_URI!);
   const state = crypto.randomUUID();
-  const scope = encodeURIComponent("file_read"); // minimal scope for reading files/frames
+  // Allow configuring scope via env; default to minimal files:read
+  const rawScope = process.env.FIGMA_SCOPE || "files:read";
+  const scope = encodeURIComponent(rawScope);
 
   const url =
     `https://www.figma.com/oauth?client_id=${clientId}` +

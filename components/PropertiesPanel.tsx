@@ -169,7 +169,7 @@ export default function PropertiesPanel(props: {
   // Find parent node with dataSource for data binding
   function findParentWithDataSource(nodeId: string): { parent: NodeInput | null; fields: string[] } {
     if (!rawRoots) return { parent: null, fields: [] }
-    
+
     // Build parent map
     const parentMap = new Map<string, NodeInput>()
     const walk = (node: NodeInput, parent: NodeInput | null) => {
@@ -177,7 +177,7 @@ export default function PropertiesPanel(props: {
       node.children?.forEach(child => walk(child, node))
     }
     rawRoots.forEach(root => walk(root, null))
-    
+
     // Walk up to find a parent with dataSource
     let current = parentMap.get(nodeId)
     while (current) {
@@ -333,7 +333,7 @@ export default function PropertiesPanel(props: {
         }, 200)
       } else {
         // Only show error if no image is set (we may already have a preview from FileReader)
-  const hasImageNow = Boolean(localImg) || Boolean(currentImage)
+        const hasImageNow = Boolean(localImg) || Boolean(currentImage)
         if (!hasImageNow) {
           setUploadError("Upload failed - please try again")
         } else {
@@ -639,7 +639,7 @@ export default function PropertiesPanel(props: {
               type="button"
               className={`${styles.btn} ${styles.btnPrimary}`}
               onClick={() => setShowUploadModal(true)}
-              style={{ width: '100%', fontSize: 14, fontWeight: 500, textAlign: 'center' , display: 'flex', justifyContent: 'center' }}
+              style={{ width: '100%', fontSize: 14, fontWeight: 500, textAlign: 'center', display: 'flex', justifyContent: 'center' }}
             >
               📤 Upload Image
             </button>
@@ -1129,6 +1129,31 @@ export default function PropertiesPanel(props: {
               <option value="OUTSIDE">Outside</option>
             </select>
           </div>
+          {/* Dash Pattern */}
+          <div style={{ marginTop: 8 }}>
+            <label style={{ fontSize: 11, color: '#9ca3af', display: 'block', marginBottom: 4 }}>
+              Dash Pattern (e.g. 4,2)
+            </label>
+            <input
+              type="text"
+              className={styles.input}
+              placeholder=""
+              value={(selectedNode.stroke?.dashPattern && selectedNode.stroke?.dashPattern.join(',')) || ''}
+              onChange={(e) =>
+                onUpdateSelected((n) => {
+                  const raw = e.target.value.trim()
+                  const arr = raw.length ? raw.split(',').map(v => Math.max(0, Number(v.trim()) || 0)) : null
+                  n.stroke = { ...(n.stroke || {}), dashPattern: arr }
+                })
+              }
+              style={{
+                backgroundColor: '#f8f9fa',
+                color: '#000000',
+                border: '1px solid #ddd',
+                borderRadius: '4px'
+              }}
+            />
+          </div>
         </div>
 
         {/* Corners */}
@@ -1152,13 +1177,75 @@ export default function PropertiesPanel(props: {
               borderRadius: '4px'
             }}
           />
+          {/* Advanced per-corner radii */}
+          <div style={{ marginTop: 8 }}>
+            <label style={{ fontSize: 11, color: '#9ca3af', display: 'block', marginBottom: 6 }}>Per-corner radius</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+              <input
+                type="number"
+                min={0}
+                className={styles.input}
+                placeholder="Top Left"
+                value={selectedNode.corners?.topLeft ?? ''}
+                onChange={(e) =>
+                  onUpdateSelected((n) => {
+                    const v = e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0)
+                    n.corners = { ...(n.corners || {}), topLeft: v }
+                  })
+                }
+                style={{ backgroundColor: '#f8f9fa', color: '#000000', border: '1px solid #ddd', borderRadius: '4px' }}
+              />
+              <input
+                type="number"
+                min={0}
+                className={styles.input}
+                placeholder="Top Right"
+                value={selectedNode.corners?.topRight ?? ''}
+                onChange={(e) =>
+                  onUpdateSelected((n) => {
+                    const v = e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0)
+                    n.corners = { ...(n.corners || {}), topRight: v }
+                  })
+                }
+                style={{ backgroundColor: '#f8f9fa', color: '#000000', border: '1px solid #ddd', borderRadius: '4px' }}
+              />
+              <input
+                type="number"
+                min={0}
+                className={styles.input}
+                placeholder="Bottom Right"
+                value={selectedNode.corners?.bottomRight ?? ''}
+                onChange={(e) =>
+                  onUpdateSelected((n) => {
+                    const v = e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0)
+                    n.corners = { ...(n.corners || {}), bottomRight: v }
+                  })
+                }
+                style={{ backgroundColor: '#f8f9fa', color: '#000000', border: '1px solid #ddd', borderRadius: '4px' }}
+              />
+              <input
+                type="number"
+                min={0}
+                className={styles.input}
+                placeholder="Bottom Left"
+                value={selectedNode.corners?.bottomLeft ?? ''}
+                onChange={(e) =>
+                  onUpdateSelected((n) => {
+                    const v = e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0)
+                    n.corners = { ...(n.corners || {}), bottomLeft: v }
+                  })
+                }
+                style={{ backgroundColor: '#f8f9fa', color: '#000000', border: '1px solid #ddd', borderRadius: '4px' }}
+              />
+            </div>
+          </div>
         </div>
 
         {/* Text */}
         {selectedNode.text && (
           <div className={styles.section}>
             <div className={styles.label}>Text</div>
-            
+
             {/* Data Binding Dropdown */}
             {(() => {
               const { parent, fields } = findParentWithDataSource(selectedNode.id)
@@ -1166,13 +1253,13 @@ export default function PropertiesPanel(props: {
                 const boundField = (selectedNode as any).dataBinding?.field || ''
                 return (
                   <div style={{ marginBottom: 12 }}>
-                    <label style={{ 
-                      fontSize: 11, 
-                      color: '#10b981', 
-                      display: 'flex', 
-                      alignItems: 'center', 
+                    <label style={{
+                      fontSize: 11,
+                      color: '#10b981',
+                      display: 'flex',
+                      alignItems: 'center',
                       gap: 6,
-                      marginBottom: 6 
+                      marginBottom: 6
                     }}>
                       <span>🔗</span>
                       <span>Bind to Data Field</span>
@@ -1183,8 +1270,8 @@ export default function PropertiesPanel(props: {
                         const field = e.target.value
                         onUpdateSelected((n) => {
                           if (field) {
-                            (n as any).dataBinding = { 
-                              field, 
+                            (n as any).dataBinding = {
+                              field,
                               parentId: parent.id,
                               type: 'field'
                             }
@@ -1217,10 +1304,10 @@ export default function PropertiesPanel(props: {
                       ))}
                     </select>
                     {boundField && (
-                      <div style={{ 
-                        marginTop: 6, 
-                        padding: '6px 8px', 
-                        background: 'rgba(16, 185, 129, 0.1)', 
+                      <div style={{
+                        marginTop: 6,
+                        padding: '6px 8px',
+                        background: 'rgba(16, 185, 129, 0.1)',
                         borderRadius: 4,
                         fontSize: 10,
                         color: '#6ee7b7'
@@ -1399,6 +1486,43 @@ export default function PropertiesPanel(props: {
                 borderRadius: '4px'
               }}
             />
+          </div>
+
+          {/* Size */}
+          <div style={{ marginBottom: 12 }}>
+            <div className={styles.label} style={{ fontSize: 12, marginBottom: 6 }}>Size</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+              <input
+                type="number"
+                min={0}
+                className={styles.input}
+                placeholder="Width"
+                value={(selectedNode as any).width ?? ''}
+                onChange={(e) =>
+                  onUpdateSelected((n) => {
+                    const raw = e.target.value
+                    const v: number | null = raw === '' ? null : Math.max(0, parseFloat(raw) || 0)
+                      ; (n as any).width = v
+                  })
+                }
+                style={{ backgroundColor: '#f8f9fa', color: '#000000', border: '1px solid #ddd', borderRadius: '4px', fontSize: 12 }}
+              />
+              <input
+                type="number"
+                min={0}
+                className={styles.input}
+                placeholder="Height"
+                value={(selectedNode as any).height ?? ''}
+                onChange={(e) =>
+                  onUpdateSelected((n) => {
+                    const raw = e.target.value
+                    const v: number | null = raw === '' ? null : Math.max(0, parseFloat(raw) || 0)
+                      ; (n as any).height = v
+                  })
+                }
+                style={{ backgroundColor: '#f8f9fa', color: '#000000', border: '1px solid #ddd', borderRadius: '4px', fontSize: 12 }}
+              />
+            </div>
           </div>
 
           {/* Padding */}
@@ -1733,6 +1857,38 @@ export default function PropertiesPanel(props: {
             />
           </div>
 
+          {/* Blend Mode */}
+          <div style={{ marginBottom: 12 }}>
+            <div className={styles.label} style={{ fontSize: 12, marginBottom: 6 }}>Blend Mode</div>
+            <select
+              className={styles.input}
+              value={(selectedNode as any).blendMode || 'NORMAL'}
+              onChange={(e) =>
+                onUpdateSelected((n) => {
+                  (n as any).blendMode = e.target.value
+                })
+              }
+              style={{ backgroundColor: '#f8f9fa', color: '#000000', border: '1px solid #ddd', borderRadius: '4px' }}
+            >
+              <option value="NORMAL">Normal</option>
+              <option value="MULTIPLY">Multiply</option>
+              <option value="SCREEN">Screen</option>
+              <option value="OVERLAY">Overlay</option>
+              <option value="DARKEN">Darken</option>
+              <option value="LIGHTEN">Lighten</option>
+              <option value="COLOR_DODGE">Color Dodge</option>
+              <option value="COLOR_BURN">Color Burn</option>
+              <option value="HARD_LIGHT">Hard Light</option>
+              <option value="SOFT_LIGHT">Soft Light</option>
+              <option value="DIFFERENCE">Difference</option>
+              <option value="EXCLUSION">Exclusion</option>
+              <option value="HUE">Hue</option>
+              <option value="SATURATION">Saturation</option>
+              <option value="COLOR">Color</option>
+              <option value="LUMINOSITY">Luminosity</option>
+            </select>
+          </div>
+
           {/* Rotation */}
           <div style={{ marginBottom: 12 }}>
             <div className={styles.label} style={{ fontSize: 12, marginBottom: 6 }}>
@@ -1842,10 +1998,10 @@ export default function PropertiesPanel(props: {
           </div>
 
           {/* Data Source / API Integration */}
-          <div style={{ 
-            marginTop: 16, 
-            borderTop: '1px solid rgba(255,255,255,0.1)', 
-            paddingTop: 16 
+          <div style={{
+            marginTop: 16,
+            borderTop: '1px solid rgba(255,255,255,0.1)',
+            paddingTop: 16
           }}>
             <button
               type="button"
@@ -1882,10 +2038,10 @@ export default function PropertiesPanel(props: {
                   transition={{ duration: 0.2 }}
                   style={{ overflow: 'hidden' }}
                 >
-                  <div style={{ 
-                    marginTop: 12, 
-                    padding: 12, 
-                    background: 'rgba(255,255,255,0.03)', 
+                  <div style={{
+                    marginTop: 12,
+                    padding: 12,
+                    background: 'rgba(255,255,255,0.03)',
                     borderRadius: 8,
                     border: '1px solid rgba(255,255,255,0.08)'
                   }}>
@@ -2028,9 +2184,9 @@ export default function PropertiesPanel(props: {
                     {/* Response Preview & Field Selection */}
                     {apiResponse && (
                       <div style={{ marginTop: 12 }}>
-                        <div style={{ 
-                          fontSize: 11, 
-                          color: '#10b981', 
+                        <div style={{
+                          fontSize: 11,
+                          color: '#10b981',
                           marginBottom: 8,
                           display: 'flex',
                           alignItems: 'center',
@@ -2046,9 +2202,9 @@ export default function PropertiesPanel(props: {
                             <label style={{ fontSize: 11, color: '#9ca3af', display: 'block', marginBottom: 6 }}>
                               Select fields to display:
                             </label>
-                            <div style={{ 
-                              display: 'flex', 
-                              flexWrap: 'wrap', 
+                            <div style={{
+                              display: 'flex',
+                              flexWrap: 'wrap',
                               gap: 6,
                               maxHeight: 120,
                               overflowY: 'auto'
@@ -2061,8 +2217,8 @@ export default function PropertiesPanel(props: {
                                     alignItems: 'center',
                                     gap: 4,
                                     padding: '4px 8px',
-                                    background: selectedApiFields.includes(field) 
-                                      ? 'rgba(16, 185, 129, 0.2)' 
+                                    background: selectedApiFields.includes(field)
+                                      ? 'rgba(16, 185, 129, 0.2)'
                                       : 'rgba(255,255,255,0.05)',
                                     border: selectedApiFields.includes(field)
                                       ? '1px solid rgba(16, 185, 129, 0.4)'
@@ -2094,16 +2250,16 @@ export default function PropertiesPanel(props: {
 
                         {/* Infinite Scroll Settings */}
                         {Array.isArray(apiResponse) && apiResponse.length > 0 && (
-                          <div style={{ 
+                          <div style={{
                             marginBottom: 12,
                             padding: 12,
                             background: 'rgba(99, 102, 241, 0.1)',
                             border: '1px solid rgba(99, 102, 241, 0.2)',
                             borderRadius: 8
                           }}>
-                            <label style={{ 
-                              display: 'flex', 
-                              alignItems: 'center', 
+                            <label style={{
+                              display: 'flex',
+                              alignItems: 'center',
                               gap: 8,
                               cursor: 'pointer',
                               marginBottom: infiniteScroll ? 12 : 0
@@ -2233,10 +2389,10 @@ export default function PropertiesPanel(props: {
                             wordBreak: 'break-all'
                           }}>
                             {JSON.stringify(
-                              Array.isArray(apiResponse) 
-                                ? apiResponse.slice(0, 3) 
-                                : apiResponse, 
-                              null, 
+                              Array.isArray(apiResponse)
+                                ? apiResponse.slice(0, 3)
+                                : apiResponse,
+                              null,
                               2
                             )}
                             {Array.isArray(apiResponse) && apiResponse.length > 3 && (
@@ -2410,7 +2566,7 @@ export default function PropertiesPanel(props: {
                 </div>
               )}
 
-             
+
             </motion.div>
           </motion.div>
         )}

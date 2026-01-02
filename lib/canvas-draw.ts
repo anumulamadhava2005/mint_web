@@ -216,7 +216,45 @@ export function drawNodes(
     }
   }
 
+  // Build descendant set for each clipping frame (for clip stack management)
+  // This allows us to know when we've exited a frame's subtree
+  const childMap = new Map<string, Set<string>>();
+  for (const n of drawableNodes) {
+    childMap.set(n.id, new Set());
+  }
+  // Build child-to-parent map from rawRoots
+  const parentMap = new Map<string, string>();
+  if (rawRoots) {
+    const buildParentMap = (nodes: NodeInput[], parentId: string | null) => {
+      for (const node of nodes) {
+        if (parentId) {
+          parentMap.set(node.id, parentId);
+          // Add to all ancestor descendant sets
+          let current = parentId;
+          while (current) {
+            childMap.get(current)?.add(node.id);
+            current = parentMap.get(current) || '';
+          }
+        }
+        if (node.children) {
+          buildParentMap(node.children, node.id);
+        }
+      }
+    };
+    buildParentMap(rawRoots, null);
+  }
+
+  // Clip stack: tracks active clipping frames
+  type ClipStackEntry = { frameId: string; descendantIds: Set<string> };
+  const clipStack: ClipStackEntry[] = [];
+
   drawableNodes.forEach((n) => {
+    // Pop clips whose subtree has ended (current node is not a descendant)
+    while (clipStack.length > 0 && !clipStack[clipStack.length - 1].descendantIds.has(n.id)) {
+      clipStack.pop();
+      ctx.restore(); // Restore the clipping context
+    }
+
     let wx = n.x;
     let wy = n.y;
     const off = transientOffsets.get(n.id);
@@ -354,38 +392,54 @@ export function drawNodes(
     }
 
     // --- Corners/Radius ---
-    let radius = 0;
     if (!isTextNode) {
-      radius =
-        rawNode?.corners?.uniform ??
-        rawNode?.corners?.topLeft ??
-        rawNode?.corners?.topRight ??
-        rawNode?.corners?.bottomRight ??
-        rawNode?.corners?.bottomLeft ??
-        0;
-
-      // Apply clipping if clipsContent is true
-      if (rawNode?.clipsContent) {
-        ctx.save();
-        ctx.beginPath();
-        if (isEllipse) {
-          ctx.ellipse(x + w / 2, y + h / 2, Math.max(0.5, w / 2), Math.max(0.5, h / 2), 0, 0, Math.PI * 2);
-        } else if (radius && radius > 0) {
-          if ((ctx as any).roundRect) {
-            (ctx as any).roundRect(x, y, w, h, radius * scale);
-          } else {
-            const r = Math.min(radius * scale, Math.min(w, h) / 2);
-            ctx.moveTo(x + r, y);
-            ctx.arcTo(x + w, y, x + w, y + h, r);
-            ctx.arcTo(x + w, y + h, x, y + h, r);
-            ctx.arcTo(x, y + h, x, y, r);
-            ctx.arcTo(x, y, x + w, y, r);
-            ctx.closePath();
-          }
+      // Compute per-corner radii (with uniform fallback)
+      const corners = rawNode?.corners || null;
+      let rTL = 0, rTR = 0, rBR = 0, rBL = 0;
+      if (corners) {
+        const u = corners.uniform ?? null;
+        if (u != null) {
+          rTL = rTR = rBR = rBL = u || 0;
         } else {
-          ctx.rect(x, y, w, h);
+          rTL = corners.topLeft || 0;
+          rTR = corners.topRight || 0;
+          rBR = corners.bottomRight || 0;
+          rBL = corners.bottomLeft || 0;
         }
-        ctx.clip();
+      }
+      // Scale radii to screen-space
+      rTL = Math.max(0, Math.min((rTL || 0) * scale, Math.min(w, h) / 2));
+      rTR = Math.max(0, Math.min((rTR || 0) * scale, Math.min(w, h) / 2));
+      rBR = Math.max(0, Math.min((rBR || 0) * scale, Math.min(w, h) / 2));
+      rBL = Math.max(0, Math.min((rBL || 0) * scale, Math.min(w, h) / 2));
+
+      // Apply clipping if clipsContent is true - push to clip stack for children
+      if (rawNode?.clipsContent) {
+        const descendants = childMap.get(n.id) ?? new Set();
+        // Only push to clip stack if this frame has descendants
+        if (descendants.size > 0) {
+          ctx.save(); // Save for clip restoration later
+          ctx.beginPath();
+          if (isEllipse) {
+            ctx.ellipse(x + w / 2, y + h / 2, Math.max(0.5, w / 2), Math.max(0.5, h / 2), 0, 0, Math.PI * 2);
+          } else if (rTL || rTR || rBR || rBL) {
+            // Rounded rect path with individual radii
+            ctx.moveTo(x + rTL, y);
+            ctx.lineTo(x + w - rTR, y);
+            ctx.quadraticCurveTo(x + w, y, x + w, y + rTR);
+            ctx.lineTo(x + w, y + h - rBR);
+            ctx.quadraticCurveTo(x + w, y + h, x + w - rBR, y + h);
+            ctx.lineTo(x + rBL, y + h);
+            ctx.quadraticCurveTo(x, y + h, x, y + h - rBL);
+            ctx.lineTo(x, y + rTL);
+            ctx.quadraticCurveTo(x, y, x + rTL, y);
+            ctx.closePath();
+          } else {
+            ctx.rect(x, y, w, h);
+          }
+          ctx.clip();
+          clipStack.push({ frameId: n.id, descendantIds: descendants });
+        }
       }
 
       if (isEllipse) {
@@ -393,33 +447,32 @@ export function drawNodes(
         ctx.ellipse(x + w / 2, y + h / 2, Math.max(0.5, w / 2), Math.max(0.5, h / 2), 0, 0, Math.PI * 2);
         ctx.fill();
         if (rawNode?.stroke) ctx.stroke();
-      } else if (radius && radius > 0) {
+      } else if (rTL || rTR || rBR || rBL) {
         ctx.beginPath();
-        if ((ctx as any).roundRect) {
-          (ctx as any).roundRect(x, y, w, h, radius * scale);
+        if ((ctx as any).roundRect && rTL === rTR && rTR === rBR && rBR === rBL) {
+          // Use native roundRect when all corners equal
+          (ctx as any).roundRect(x, y, w, h, rTL);
         } else {
-          const r = Math.min(radius * scale, Math.min(w, h) / 2);
-          ctx.moveTo(x + r, y);
-          ctx.arcTo(x + w, y, x + w, y + h, r);
-          ctx.arcTo(x + w, y + h, x, y + h, r);
-          ctx.arcTo(x, y + h, x, y, r);
-          ctx.arcTo(x, y, x + w, y, r);
+          // Rounded rect path with per-corner radii
+          ctx.moveTo(x + rTL, y);
+          ctx.lineTo(x + w - rTR, y);
+          ctx.quadraticCurveTo(x + w, y, x + w, y + rTR);
+          ctx.lineTo(x + w, y + h - rBR);
+          ctx.quadraticCurveTo(x + w, y + h, x + w - rBR, y + h);
+          ctx.lineTo(x + rBL, y + h);
+          ctx.quadraticCurveTo(x, y + h, x, y + h - rBL);
+          ctx.lineTo(x, y + rTL);
+          ctx.quadraticCurveTo(x, y, x + rTL, y);
           ctx.closePath();
         }
         ctx.fill();
         if (rawNode?.stroke) {
           ctx.stroke();
-        } else {
-          // No default outline - remove black borders
         }
       } else {
         ctx.fillRect(x, y, w, h);
         if (rawNode?.stroke) {
           ctx.strokeRect(x, y, w, h);
-        } else {
-          // No default outline - remove black borders
-          ctx.strokeRect(x, y, w, h);
-          ctx.restore();
         }
       }
     }
@@ -432,10 +485,7 @@ export function drawNodes(
     ctx.globalAlpha = 1; // Reset opacity
     ctx.globalCompositeOperation = "source-over"; // Reset blend mode
 
-    // Restore clipping context if it was applied
-    if (rawNode?.clipsContent) {
-      ctx.restore();
-    }
+    // Note: clipping is now managed via clipStack, not restored here
 
     // Restore context (rotation, etc.)
     ctx.restore();
@@ -700,6 +750,12 @@ export function drawNodes(
       }
     }
   });
+
+  // Clean up any remaining clip stack entries
+  while (clipStack.length > 0) {
+    clipStack.pop();
+    ctx.restore();
+  }
 }
 
 // Reference frame overlay (Figma-like outline)
