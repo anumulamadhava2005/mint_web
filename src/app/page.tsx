@@ -1528,6 +1528,7 @@ function HomePage() {
           }
           
           console.log('[COMMIT] Publishing snapshot:', { 
+            projectId, 
             fileKey: lastFileKey, 
             rootsCount: rawRoots.length,
             refW,
@@ -1539,7 +1540,7 @@ function HomePage() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              fileKey: lastFileKey,
+              fileKey: projectId,  // Use projectId instead of Figma fileKey
               roots: strippedRoots,
               manifest: {},
               refW,

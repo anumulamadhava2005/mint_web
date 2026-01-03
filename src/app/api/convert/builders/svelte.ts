@@ -58,7 +58,7 @@ export function svelteApp(roots: DrawableNode[], ref: ReferenceFrame | null) {
   const isText = (n:any)=> String(n.type).toUpperCase()==="TEXT";
   const isImg  = (n:any)=> n.fill?.type==="IMAGE" && !!n.fill.imageRef;
   function cssFrom(n:any){
-    const s:any={ position:"absolute", left:n.x, top:n.y, width:n.w, height:n.h };
+    const s:any={ position:"absolute", left:n.ax ?? n.x, top:n.ay ?? n.y, width:n.w, height:n.h };
     if(!isText(n) && !isImg(n) && n.fill?.type==="SOLID" && n.fill.color) s.background=n.fill.color;
     if(!isText(n) && n.stroke?.weight){ s.borderWidth=n.stroke.weight; s.borderStyle="solid"; if(n.stroke?.color) s.borderColor=n.stroke.color; }
     if(n.corners){

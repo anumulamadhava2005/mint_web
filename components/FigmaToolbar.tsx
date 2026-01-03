@@ -412,6 +412,27 @@ export default function FigmaToolbar(props: FigmaToolbarProps) {
           <PlayIcon />
         </button>
 
+        {/* Commit Button */}
+        <button
+          onClick={props.onCommit}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '6px 14px',
+            background: '#10b981',
+            border: 'none',
+            borderRadius: 6,
+            color: '#fff',
+            fontSize: 13,
+            fontWeight: 500,
+            cursor: 'pointer',
+          }}
+          title="Commit changes to snapshot"
+        >
+          Commit
+        </button>
+
         {/* Share Button */}
         <button
           onClick={props.openConvert}

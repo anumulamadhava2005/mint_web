@@ -24,7 +24,7 @@ function nodeKind(n:any): "TEXT" | "IMAGE" | "SHAPE" { if (String(n.type||"").to
 function cssFromNode(n:any): React.CSSProperties {
   const isText = String(n.type||"").toUpperCase()==="TEXT";
   const isImage = n.fill?.type==="IMAGE" && !!n.fill.imageRef;
-  const s:any = { position: "absolute", left: n.x, top: n.y, width: n.w, height: n.h, boxSizing: "border-box" };
+  const s:any = { position: "absolute", left: n.ax ?? n.x, top: n.ay ?? n.y, width: n.w, height: n.h, boxSizing: "border-box" };
   if (!isText && n.stroke?.weight && (n.w===0 || n.h===0)) { if (n.w===0) s.width=1; if (n.h===0) s.height=1; if (n.stroke?.color) s.background=n.stroke.color; return s; }
   if (!isText) {
     if (!isImage && n.fill?.type==="SOLID" && n.fill.color) s.background = n.fill.color;
@@ -51,7 +51,7 @@ export function LiveTree({ nodes, manifest }:{ nodes:any[]; manifest:Record<stri
       const bg = kind==="IMAGE" && n.fill?.imageRef ? <Img key={\`\${n.id}-bg\`} style={{ position:"absolute", left:0, top:0, width:"100%", height:"100%", objectFit:"cover", borderRadius: wrapStyle.borderRadius as any }} src={manifest[n.fill.imageRef]||""} /> : null;
       return <div key={n.id||\`\${depth}-\${idx}\`} style={wrapStyle} data-name={n.name}>{bg}{render(n.children, depth+1)}</div>;
     }
-    if (kind==="IMAGE" && n.fill?.imageRef){ const style = { position:"absolute", left:n.x, top:n.y, width:n.w, height:n.h, objectFit:"cover", borderRadius:(n.corners?.uniform??0) } as React.CSSProperties; return <Img key={n.id||\`\${depth}-\${idx}\`} style={style} src={manifest[n.fill.imageRef]||""} alt={n.name} />; }
+    if (kind==="IMAGE" && n.fill?.imageRef){ const style = { position:"absolute", left:n.ax ?? n.x, top:n.ay ?? n.y, width:n.w, height:n.h, objectFit:"cover", borderRadius:(n.corners?.uniform??0) } as React.CSSProperties; return <Img key={n.id||\`\${depth}-\${idx}\`} style={style} src={manifest[n.fill.imageRef]||""} alt={n.name} />; }
     const style = cssFromNode(n); const text = String(n.type||"").toUpperCase()==="TEXT" ? (n.text?.characters ?? n.textRaw ?? "") : ""; const isText = String(n.type||"").toUpperCase()==="TEXT";
     return <Box key={n.id||\`\${depth}-\${idx}\`} style={style} dataName={n.name} text={text} isText={isText} />;
   });

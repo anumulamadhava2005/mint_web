@@ -514,16 +514,14 @@ export async function POST(req: NextRequest) {
     });
 
     // Write a static backup snapshot (optional).
-    // Dev behavior is controlled by env flags:
-    // - LIVE_WRITE_SNAPSHOT_DEV or NEXT_PUBLIC_LIVE_WRITE_STATIC_SNAPSHOT_DEV = 'true' to force write in dev
-    // - otherwise dev skips writing to avoid Next.js HMR full-page reloads.
+    // Always write snapshots in both dev and production modes.
     try {
-      const writeInDev = String(process.env.LIVE_WRITE_SNAPSHOT_DEV || process.env.NEXT_PUBLIC_LIVE_WRITE_STATIC_SNAPSHOT_DEV || '').toLowerCase() === 'true';
-      if (process.env.NODE_ENV === 'production' || writeInDev) {
+      if (true) {
         const publicDir = path.join(process.cwd(), "public", "live", "snapshots");
         await fs.promises.mkdir(publicDir, { recursive: true });
         
         // Extract filename from fileKey:
+        // - If it's a project ID like "proj_1767158668646", strip the "proj_" prefix
         // - If it's a Figma URL like "https://www.figma.com/file/ABC123/Name", extract "ABC123"
         // - If it's already just a key like "BO4SUjwC6DDP1zHCu1RcaJ", use it as-is
         let safeName = fileKey;
@@ -538,6 +536,10 @@ export async function POST(req: NextRequest) {
             safeName = parts[parts.length - 1] || fileKey;
           }
         }
+        // Strip "proj_" prefix if present (e.g., proj_1767158668646 -> 1767158668646)
+        if (safeName.startsWith('proj_')) {
+          safeName = safeName.substring(5);
+        }
         const outPath = path.join(publicDir, `${safeName}.json`);
         const payload = {
           version: snap.version,
@@ -545,8 +547,6 @@ export async function POST(req: NextRequest) {
         };
         await fs.promises.writeFile(outPath, JSON.stringify(payload, null, 2), "utf8");
         console.info(`[PUBLISH] Wrote static snapshot to ${outPath} (version ${snap.version}, ${mappedRoots.length} roots)`);
-      } else {
-        console.info("[PUBLISH] Dev mode: skipping static snapshot write to avoid HMR reload (enable with LIVE_WRITE_SNAPSHOT_DEV=true)");
       }
     } catch (e: any) {
       console.error("[PUBLISH] Failed during static snapshot step:", e?.message || String(e));

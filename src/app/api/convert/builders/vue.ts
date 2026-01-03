@@ -66,7 +66,7 @@ onBeforeUnmount(() => { if (ro) ro.disconnect(); });
 function isText(n: Node){ return String(n.type).toUpperCase()==="TEXT"; }
 function isImage(n: Node){ return n.fill?.type==="IMAGE" && !!n.fill.imageRef; }
 function styleFor(n: Node){
-  const s:any={ position:"absolute", left:n.x, top:n.y, width:n.w, height:n.h };
+  const s:any={ position:"absolute", left:n.ax ?? n.x, top:n.ay ?? n.y, width:n.w, height:n.h };
   if(!isText(n) && !isImage(n) && n.fill?.type==="SOLID" && n.fill.color) s.background=n.fill.color;
   if(!isText(n) && n.stroke?.weight){ s.borderWidth=n.stroke.weight; s.borderStyle="solid"; if(n.stroke?.color) s.borderColor=n.stroke.color; }
   if(n.corners){
@@ -100,7 +100,7 @@ const TreeNode = defineComponent({
       // Respect the fill's fit mode: cover (default), contain, fill
       const fitMode = n.fill?.fit || "cover";
       const objectFit = fitMode === "fill" ? "fill" : fitMode === "contain" ? "contain" : "cover";
-      const s:any = { position:"absolute", left:n.x, top:n.y, width:n.w, height:n.h, objectFit };
+      const s:any = { position:"absolute", left:n.ax ?? n.x, top:n.ay ?? n.y, width:n.w, height:n.h, objectFit };
       return ()=> h("img", { style: s, alt: n.name, src: typeof n.fill.imageRef==="string" && n.fill.imageRef.startsWith("data:") ? n.fill.imageRef : "" });
     }
     if(n.children.length>0){

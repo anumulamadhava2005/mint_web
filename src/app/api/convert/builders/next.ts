@@ -63,8 +63,8 @@ function normalizeSnapshot(raw:any) {
     // Recursive adapter: map w/h -> width/height, coerce numbers, preserve ax/ay, preserve w/h, resolve image fills
     function adaptNode(n:any): any {
       if (!n || typeof n !== "object") return n;
-      const x = Math.round(n.x ?? 0);
-      const y = Math.round(n.y ?? 0);
+      const x = Math.round(n.ax ?? n.x ?? 0);
+      const y = Math.round(n.ay ?? n.y ?? 0);
       // compute canonical numeric values for both w/h and width/height
       const wVal = Math.round(n.w ?? n.width ?? 0);
       const hVal = Math.round(n.h ?? n.height ?? 0);
@@ -235,7 +235,7 @@ function nodeKind(n:any): "TEXT" | "IMAGE" | "SHAPE" {
 function cssFromNode(n:any): React.CSSProperties {
   const isText = String(n.type||"").toUpperCase()==="TEXT";
   const isImage = n.fill?.type==="IMAGE" && !!n.fill.imageRef;
-  const s:any = { position: "absolute", left: n.x, top: n.y, width: n.w, height: n.h, boxSizing: "border-box" };
+  const s:any = { position: "absolute", left: n.ax ?? n.x, top: n.ay ?? n.y, width: n.w, height: n.h, boxSizing: "border-box" };
 
   if (!isText && n.stroke?.weight && (n.w===0 || n.h===0)) {
     if (n.w===0) s.width=1; if (n.h===0) s.height=1;
@@ -478,8 +478,8 @@ export function LiveTree({ nodes, manifest, interactions, frameRoutes, nodeToFra
     // Set up container style
     const containerStyle: any = { 
       position: 'absolute',
-      left: node.x,
-      top: node.y,
+      left: node.ax ?? node.x,
+      top: node.ay ?? node.y,
       width: node.w || node.width,
       height: node.h || node.height,
       overflow: 'visible',
@@ -559,7 +559,7 @@ export function LiveTree({ nodes, manifest, interactions, frameRoutes, nodeToFra
     }, [node.dataSource?.url]);
 
     const containerStyle: any = {
-      position: 'absolute', left: node.x, top: node.y, width: node.w || node.width, height: node.h || node.height,
+      position: 'absolute', left: node.ax ?? node.x, top: node.ay ?? node.y, width: node.w || node.width, height: node.h || node.height,
       overflow: 'visible', background: node.fill?.color || node.backgroundColor || 'transparent'
     };
     if (node.stroke?.weight) { containerStyle.borderWidth = node.stroke.weight; containerStyle.borderStyle = 'solid'; containerStyle.borderColor = node.stroke.color || '#000'; }
@@ -620,7 +620,7 @@ export function LiveTree({ nodes, manifest, interactions, frameRoutes, nodeToFra
       // Respect the fill's fit mode: cover (default), contain, fill
       const fitMode = n.fill?.fit || "cover";
       const objectFit = fitMode === "fill" ? "fill" : fitMode === "contain" ? "contain" : "cover";
-      const style = { position:"absolute", left:n.x, top:n.y, width:n.w, height:n.h, borderRadius:(n.corners?.uniform??0) } as React.CSSProperties;
+      const style = { position:"absolute", left:n.ax ?? n.x, top:n.ay ?? n.y, width:n.w, height:n.h, borderRadius:(n.corners?.uniform??0) } as React.CSSProperties;
       const list = interactionsBySource.get(n.id)||[];
       const hasClick = list.some((it:any)=>!it.trigger || it.trigger==="onClick");
       return (

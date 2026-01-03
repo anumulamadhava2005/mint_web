@@ -494,18 +494,25 @@ export default function FigmaPropertiesPanel(props: Props) {
     )
   }
 
-  // Get absolute positions
-  const absX = (selectedNode as any).x ?? selectedNode.absoluteBoundingBox?.x ?? 0
-  const absY = (selectedNode as any).y ?? selectedNode.absoluteBoundingBox?.y ?? 0
-  
-  // Get parent's absolute position for relative calculation
+  // Derive parent absolute for fallback when local is missing
   const parentAbsX = parentNode ? ((parentNode as any).x ?? parentNode.absoluteBoundingBox?.x ?? 0) : 0
   const parentAbsY = parentNode ? ((parentNode as any).y ?? parentNode.absoluteBoundingBox?.y ?? 0) : 0
-  
-  // Calculate position relative to parent (if not a root frame)
-  // For root frames, show absolute position
-  const x = isFrame ? absX : (absX - parentAbsX)
-  const y = isFrame ? absY : (absY - parentAbsY)
+
+  // Prefer local coordinates if present; otherwise fallback to absolute - parent
+  const localX = (selectedNode as any).x != null
+    ? (selectedNode as any).x
+    : ((selectedNode.absoluteBoundingBox?.x ?? 0) - parentAbsX)
+  const localY = (selectedNode as any).y != null
+    ? (selectedNode as any).y
+    : ((selectedNode.absoluteBoundingBox?.y ?? 0) - parentAbsY)
+
+  // Display: frames show absolute; children show local
+  const x = isFrame
+    ? ((selectedNode as any).x ?? selectedNode.absoluteBoundingBox?.x ?? 0)
+    : localX
+  const y = isFrame
+    ? ((selectedNode as any).y ?? selectedNode.absoluteBoundingBox?.y ?? 0)
+    : localY
   
   const width = (selectedNode as any).width ?? selectedNode.absoluteBoundingBox?.width ?? 100
   const height = (selectedNode as any).height ?? selectedNode.absoluteBoundingBox?.height ?? 100
@@ -606,10 +613,9 @@ export default function FigmaPropertiesPanel(props: Props) {
                 if (!parentNode) return
                 const parentW = (parentNode as any).width ?? parentNode.absoluteBoundingBox?.width ?? 0
                 onUpdateSelected((n) => {
-                  // Align to left edge of parent (x = 0 relative to parent)
-                  const newAbsX = parentAbsX
-                  ;(n as any).x = newAbsX
-                  if (n.absoluteBoundingBox) n.absoluteBoundingBox.x = newAbsX
+                  // Align to left edge within parent: local X = 0
+                  const newRelX = 0
+                  ;(n as any).x = newRelX
                 })
               }}
             />
@@ -621,10 +627,9 @@ export default function FigmaPropertiesPanel(props: Props) {
                 const parentW = (parentNode as any).width ?? parentNode.absoluteBoundingBox?.width ?? 0
                 const nodeW = width
                 onUpdateSelected((n) => {
-                  // Center horizontally within parent
-                  const newAbsX = parentAbsX + (parentW - nodeW) / 2
-                  ;(n as any).x = newAbsX
-                  if (n.absoluteBoundingBox) n.absoluteBoundingBox.x = newAbsX
+                  // Center horizontally within parent: local X = (parentW - nodeW)/2
+                  const newRelX = (parentW - nodeW) / 2
+                  ;(n as any).x = newRelX
                 })
               }}
             />
@@ -636,10 +641,9 @@ export default function FigmaPropertiesPanel(props: Props) {
                 const parentW = (parentNode as any).width ?? parentNode.absoluteBoundingBox?.width ?? 0
                 const nodeW = width
                 onUpdateSelected((n) => {
-                  // Align to right edge of parent
-                  const newAbsX = parentAbsX + parentW - nodeW
-                  ;(n as any).x = newAbsX
-                  if (n.absoluteBoundingBox) n.absoluteBoundingBox.x = newAbsX
+                  // Align to right edge within parent: local X = parentW - nodeW
+                  const newRelX = parentW - nodeW
+                  ;(n as any).x = newRelX
                 })
               }}
             />
@@ -649,10 +653,9 @@ export default function FigmaPropertiesPanel(props: Props) {
               onClick={() => {
                 if (!parentNode) return
                 onUpdateSelected((n) => {
-                  // Align to top edge of parent (y = 0 relative to parent)
-                  const newAbsY = parentAbsY
-                  ;(n as any).y = newAbsY
-                  if (n.absoluteBoundingBox) n.absoluteBoundingBox.y = newAbsY
+                  // Align to top edge within parent: local Y = 0
+                  const newRelY = 0
+                  ;(n as any).y = newRelY
                 })
               }}
             />
@@ -664,10 +667,9 @@ export default function FigmaPropertiesPanel(props: Props) {
                 const parentH = (parentNode as any).height ?? parentNode.absoluteBoundingBox?.height ?? 0
                 const nodeH = height
                 onUpdateSelected((n) => {
-                  // Center vertically within parent
-                  const newAbsY = parentAbsY + (parentH - nodeH) / 2
-                  ;(n as any).y = newAbsY
-                  if (n.absoluteBoundingBox) n.absoluteBoundingBox.y = newAbsY
+                  // Center vertically within parent: local Y = (parentH - nodeH)/2
+                  const newRelY = (parentH - nodeH) / 2
+                  ;(n as any).y = newRelY
                 })
               }}
             />
@@ -685,10 +687,8 @@ export default function FigmaPropertiesPanel(props: Props) {
               value={Math.round(x)}
               onChange={(v) => onUpdateSelected((n) => { 
                 const newRelX = Number(v) || 0
-                // Convert relative position back to absolute for storage
-                const newAbsX = isFrame ? newRelX : (parentAbsX + newRelX)
-                ;(n as any).x = newAbsX
-                if (n.absoluteBoundingBox) n.absoluteBoundingBox.x = newAbsX
+                // Store local X; LayoutEngine will compute world coordinates
+                ;(n as any).x = newRelX
               })}
               type="number"
             />
@@ -697,10 +697,8 @@ export default function FigmaPropertiesPanel(props: Props) {
               value={Math.round(y)}
               onChange={(v) => onUpdateSelected((n) => { 
                 const newRelY = Number(v) || 0
-                // Convert relative position back to absolute for storage
-                const newAbsY = isFrame ? newRelY : (parentAbsY + newRelY)
-                ;(n as any).y = newAbsY
-                if (n.absoluteBoundingBox) n.absoluteBoundingBox.y = newAbsY
+                // Store local Y; LayoutEngine will compute world coordinates
+                ;(n as any).y = newRelY
               })}
               type="number"
             />

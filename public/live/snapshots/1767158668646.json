@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "payload": {
+    "roots": [
+      {
+        "h": 7347,
+        "w": 1275,
+        "x": 0,
+        "y": 0,
+        "ax": -9405,
+        "ay": -11638.9,
+        "id": "frame_mjtjagbc",
+        "name": "Desktop",
+        "type": "FRAME",
+        "width": 1275,
+        "height": 7346.9,
+        "scaleX": 1,
+        "scaleY": -1,
+        "stroke": {
+          "weight": 0
+        },
+        "children": [
+          {
+            "h": 658,
+            "w": 842,
+            "x": 9465,
+            "y": 11699,
+            "ax": 60.000000000000085,
+            "ay": 66.89999999999918,
+            "id": "rect_mjvl9987",
+            "fill": {
+              "type": "SOLID",
+              "color": "#ad5252"
+            },
+            "name": "Rectangle",
+            "type": "FRAME",
+            "width": 841.7125904464192,
+            "height": 657.7985839417787,
+            "stroke": {
+              "color": "#111827",
+              "weight": 1
+            },
+            "corners": {
+              "uniform": 50
+            },
+            "children": [],
+            "alignItems": "center",
+            "layoutMode": "NONE",
+            "clipsContent": false,
+            "justifyContent": "center",
+            "textRaw": ""
+          }
+        ],
+        "alignItems": "flex-start",
+        "justifyContent": "flex-start",
+        "backgroundColor": "#ffffff",
+        "textRaw": ""
+      }
+    ],
+    "manifest": {},
+    "refW": 1275,
+    "refH": 7347,
+    "interactions": [],
+    "focusFrameId": null
+  }
+}

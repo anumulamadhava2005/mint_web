@@ -247,6 +247,9 @@ export function drawNodes(
   // Clip stack: tracks active clipping frames
   type ClipStackEntry = { frameId: string; descendantIds: Set<string> };
   const clipStack: ClipStackEntry[] = [];
+  // Map for quick lookup of drawable nodes by id (for child overlays)
+  const drawableMap = new Map<string, DrawableNode>();
+  for (const d of drawableNodes) drawableMap.set(d.id, d);
 
   drawableNodes.forEach((n) => {
     // Pop clips whose subtree has ended (current node is not a descendant)
@@ -618,6 +621,153 @@ export function drawNodes(
         wrapAndDrawText(ctx, chars, startX, startY, maxW, lineH);
       }
     }
+
+      // --- Property visualization overlays (padding, gap, alignment) ---
+      // Draw subtle guides to reflect properties selected in the panel
+      if (!isTextNode) {
+        const nodeType = (n.type || '').toUpperCase();
+        // Padding: show content box inside frames when any padding > 0
+        const padTop = (rawNode as any)?.paddingTop || 0;
+        const padRight = (rawNode as any)?.paddingRight || 0;
+        const padBottom = (rawNode as any)?.paddingBottom || 0;
+        const padLeft = (rawNode as any)?.paddingLeft || 0;
+        const hasPadding = padTop || padRight || padBottom || padLeft;
+        if (nodeType === 'FRAME' && hasPadding) {
+          const cx = x + padLeft * scale;
+          const cy = y + padTop * scale;
+          const cw = Math.max(0.5, (n.width - padLeft - padRight) * scale);
+          const ch = Math.max(0.5, (n.height - padTop - padBottom) * scale);
+          ctx.save();
+          ctx.setLineDash([4, 3]);
+          ctx.lineWidth = Math.max(1, 1 * scale);
+          ctx.strokeStyle = 'rgba(24,160,251,0.7)';
+          ctx.strokeRect(cx, cy, cw, ch);
+          // small corner ticks
+          const tick = 6 * scale;
+          ctx.beginPath();
+          ctx.moveTo(cx, cy); ctx.lineTo(cx + tick, cy);
+          ctx.moveTo(cx, cy); ctx.lineTo(cx, cy + tick);
+          ctx.moveTo(cx + cw, cy); ctx.lineTo(cx + cw - tick, cy);
+          ctx.moveTo(cx + cw, cy); ctx.lineTo(cx + cw, cy + tick);
+          ctx.moveTo(cx, cy + ch); ctx.lineTo(cx + tick, cy + ch);
+          ctx.moveTo(cx, cy + ch); ctx.lineTo(cx, cy + ch - tick);
+          ctx.moveTo(cx + cw, cy + ch); ctx.lineTo(cx + cw - tick, cy + ch);
+          ctx.moveTo(cx + cw, cy + ch); ctx.lineTo(cx + cw, cy + ch - tick);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // Auto layout gap visualization: draw markers between adjacent children
+        const layoutMode = (rawNode as any)?.layoutMode;
+        const itemSpacing = (rawNode as any)?.itemSpacing || 0;
+        const children = (rawNode as any)?.children as NodeInput[] | undefined;
+        if (nodeType === 'FRAME' && children && children.length > 1 && itemSpacing > 0 && (layoutMode === 'HORIZONTAL' || layoutMode === 'VERTICAL')) {
+          ctx.save();
+          ctx.setLineDash([]);
+          ctx.lineWidth = Math.max(1, 1 * scale);
+          ctx.strokeStyle = 'rgba(139,92,246,0.9)'; // purple
+          ctx.fillStyle = 'rgba(139,92,246,0.9)';
+          if (layoutMode === 'HORIZONTAL') {
+            // Sort by x to find adjacent order
+            const dChildren = children
+              .map(c => drawableMap.get(c.id))
+              .filter(Boolean) as DrawableNode[];
+            dChildren.sort((a, b) => a.x - b.x);
+            for (let i = 0; i < dChildren.length - 1; i++) {
+              const a = dChildren[i];
+              const b = dChildren[i + 1];
+              const ax = offset.x + a.x * scale;
+              const ay = offset.y + a.y * scale;
+              const aw = a.width * scale;
+              const ah = a.height * scale;
+              const bx = offset.x + b.x * scale;
+              const by = offset.y + b.y * scale;
+              const bh = b.height * scale;
+              // Gap line vertically centered between a and b
+              const gx = ax + aw + ((bx - (ax + aw)) / 2);
+              const gy1 = Math.min(ay + ah / 2, by + bh / 2) - 8 * scale;
+              const gy2 = Math.max(ay + ah / 2, by + bh / 2) + 8 * scale;
+              ctx.beginPath();
+              ctx.moveTo(gx, gy1);
+              ctx.lineTo(gx, gy2);
+              ctx.stroke();
+              // Label spacing value
+              const label = String(itemSpacing);
+              ctx.font = `${Math.round(10 * scale)}px system-ui, sans-serif`;
+              const tw = ctx.measureText(label).width;
+              ctx.fillRect(gx - tw / 2 - 4, gy1 - 16 * scale, tw + 8, 14 * scale);
+              ctx.fillStyle = '#fff';
+              ctx.fillText(label, gx - tw / 2, gy1 - 5 * scale);
+              ctx.fillStyle = 'rgba(139,92,246,0.9)';
+            }
+          } else {
+            const dChildren = children
+              .map(c => drawableMap.get(c.id))
+              .filter(Boolean) as DrawableNode[];
+            dChildren.sort((a, b) => a.y - b.y);
+            for (let i = 0; i < dChildren.length - 1; i++) {
+              const a = dChildren[i];
+              const b = dChildren[i + 1];
+              const ax = offset.x + a.x * scale;
+              const ay = offset.y + a.y * scale;
+              const aw = a.width * scale;
+              const ah = a.height * scale;
+              const bx = offset.x + b.x * scale;
+              const by = offset.y + b.y * scale;
+              const bw = b.width * scale;
+              // Gap line horizontally centered between a and b
+              const gy = ay + ah + ((by - (ay + ah)) / 2);
+              const gx1 = Math.min(ax + aw / 2, bx + bw / 2) - 8 * scale;
+              const gx2 = Math.max(ax + aw / 2, bx + bw / 2) + 8 * scale;
+              ctx.beginPath();
+              ctx.moveTo(gx1, gy);
+              ctx.lineTo(gx2, gy);
+              ctx.stroke();
+              const label = String(itemSpacing);
+              ctx.font = `${Math.round(10 * scale)}px system-ui, sans-serif`;
+              const tw = ctx.measureText(label).width;
+              ctx.fillRect(gx1 - 2, gy - 14 * scale, tw + 8, 14 * scale);
+              ctx.fillStyle = '#fff';
+              ctx.fillText(label, gx1 + 2, gy - 5 * scale);
+              ctx.fillStyle = 'rgba(139,92,246,0.9)';
+            }
+          }
+          ctx.restore();
+        }
+
+        // Alignment baseline: visualize alignItems/justifyContent intent
+        const justify = (rawNode as any)?.justifyContent;
+        const align = (rawNode as any)?.alignItems;
+        if (nodeType === 'FRAME' && (justify || align)) {
+          ctx.save();
+          ctx.setLineDash([2, 3]);
+          ctx.lineWidth = Math.max(1, 1 * scale);
+          ctx.strokeStyle = 'rgba(96,165,250,0.9)'; // blue
+          // Horizontal axis for alignItems
+          if (align === 'center') {
+            const cy = y + (h / 2);
+            ctx.beginPath(); ctx.moveTo(x + 4, cy); ctx.lineTo(x + w - 4, cy); ctx.stroke();
+          } else if (align === 'flex-end') {
+            const by = y + h - 2;
+            ctx.beginPath(); ctx.moveTo(x + 4, by); ctx.lineTo(x + w - 4, by); ctx.stroke();
+          } else if (align === 'flex-start') {
+            const ty = y + 2;
+            ctx.beginPath(); ctx.moveTo(x + 4, ty); ctx.lineTo(x + w - 4, ty); ctx.stroke();
+          }
+          // Vertical axis for justifyContent
+          if (justify === 'center') {
+            const cxm = x + (w / 2);
+            ctx.beginPath(); ctx.moveTo(cxm, y + 4); ctx.lineTo(cxm, y + h - 4); ctx.stroke();
+          } else if (justify === 'flex-end') {
+            const rx = x + w - 2;
+            ctx.beginPath(); ctx.moveTo(rx, y + 4); ctx.lineTo(rx, y + h - 4); ctx.stroke();
+          } else if (justify === 'flex-start') {
+            const lx = x + 2;
+            ctx.beginPath(); ctx.moveTo(lx, y + 4); ctx.lineTo(lx, y + h - 4); ctx.stroke();
+          }
+          ctx.restore();
+        }
+      }
 
     // --- Infinite Scroll Rendering ---
     // After rendering the container, render repeated children for each data item
